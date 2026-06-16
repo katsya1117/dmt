@@ -1,0 +1,10 @@
+services:
+  php-server:
+    build: ./mock/php-server
+    ports:
+      - "8080:80"
+    volumes:
+      - php-uploads:/var/www/html/uploads
+
+volumes:
+  php-uploads:
