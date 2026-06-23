@@ -4,7 +4,7 @@ import Typography from '@mui/material/Typography'
 export default function VehicleTable() {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h1" gutterBottom>車種テーブルメンテナンス</Typography>
+      <Typography variant="h1" gutterBottom>車種テーブル</Typography>
       <Typography color="text.secondary">（未実装）</Typography>
     </Box>
   )

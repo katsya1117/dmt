@@ -9,33 +9,44 @@ import { queryClient } from './lib/queryClient'
 import theme from './theme'
 import Header from './components/Header'
 
+// アップロード
 import ServiceNewsUpload from './pages/ServiceNewsUpload'
+import BookletUpload from './pages/BookletUpload'
+import VehicleDbUpload from './pages/VehicleDbUpload'
 import VehicleContentUpload from './pages/VehicleContentUpload'
 import CommonContentUpload from './pages/CommonContentUpload'
+import ApplicationUpload from './pages/ApplicationUpload'
 
+// ログ閲覧
+import LogViewer from './pages/LogViewer'
+
+// メンテナンス
 import VehicleTable from './pages/VehicleTable'
-import KatashikiNameTable from './pages/KatashikiNameTable'
+import NoticeTable from './pages/NoticeTable'
+import AccountAuthTable from './pages/AccountAuthTable'
+import RoleTable from './pages/RoleTable'
+import UserRoleTable from './pages/UserRoleTable'
+import AdminTable from './pages/AdminTable'
 import AppUpdateTable from './pages/AppUpdateTable'
 import ProductionInfoTable from './pages/ProductionInfoTable'
 import VehicleFileTable from './pages/VehicleFileTable'
+import SystemNameTable from './pages/SystemNameTable'
+import KatashikiNameTable from './pages/KatashikiNameTable'
 import KatashikiVehicleIdTable from './pages/KatashikiVehicleIdTable'
-import VehicleNoKatashikiTable from './pages/VehicleNoKatashikiTable'
-import EIdSystemTable from './pages/EIdSystemTable'
 
-import NoticeUpdate from './pages/NoticeUpdate'
-import D3SecurityAuth from './pages/D3SecurityAuth'
-import D3LibroFile from './pages/D3LibroFile'
-
-import RoleManagement from './pages/RoleManagement'
-import UserRoleManagement from './pages/UserRoleManagement'
-import AdminTable from './pages/AdminTable'
-
+// データ出力
 import OfflineUpdateCreate from './pages/OfflineUpdateCreate'
-import HtmlDeliveryCreate from './pages/HtmlDeliveryCreate'
-import SmsVehicleExport from './pages/SmsVehicleExport'
+import HtmlFileCreate from './pages/HtmlFileCreate'
+import DeliveryDataCreate from './pages/DeliveryDataCreate'
+import VehicleListHtmlCreate from './pages/VehicleListHtmlCreate'
 
-import ElectronicManualLog from './pages/ElectronicManualLog'
-import HtmlManualLog from './pages/HtmlManualLog'
+// 故障診断
+import DiagnosisInstallFile from './pages/DiagnosisInstallFile'
+import SecurityAuthManage from './pages/SecurityAuthManage'
+import ReproFileMaintenance from './pages/ReproFileMaintenance'
+
+// 環境設定
+import ConnectionSettings from './pages/ConnectionSettings'
 
 export default function App() {
   return (
@@ -50,33 +61,44 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/upload/service-news" replace />} />
 
+            {/* アップロード */}
             <Route path="/upload/service-news" element={<ServiceNewsUpload />} />
+            <Route path="/upload/booklet" element={<BookletUpload />} />
+            <Route path="/upload/vehicle-db" element={<VehicleDbUpload />} />
             <Route path="/upload/vehicle-content" element={<VehicleContentUpload />} />
             <Route path="/upload/common-content" element={<CommonContentUpload />} />
+            <Route path="/upload/application" element={<ApplicationUpload />} />
 
+            {/* ログ閲覧（単一画面） */}
+            <Route path="/log" element={<LogViewer />} />
+
+            {/* メンテナンス */}
             <Route path="/master/vehicle" element={<VehicleTable />} />
-            <Route path="/master/katashiki-name" element={<KatashikiNameTable />} />
+            <Route path="/master/notice" element={<NoticeTable />} />
+            <Route path="/master/account-auth" element={<AccountAuthTable />} />
+            <Route path="/master/role" element={<RoleTable />} />
+            <Route path="/master/user-role" element={<UserRoleTable />} />
+            <Route path="/master/admin" element={<AdminTable />} />
             <Route path="/master/app-update" element={<AppUpdateTable />} />
             <Route path="/master/production-info" element={<ProductionInfoTable />} />
             <Route path="/master/vehicle-file" element={<VehicleFileTable />} />
+            <Route path="/master/system-name" element={<SystemNameTable />} />
+            <Route path="/master/katashiki-name" element={<KatashikiNameTable />} />
             <Route path="/master/katashiki-vehicle-id" element={<KatashikiVehicleIdTable />} />
-            <Route path="/master/vehicle-no-katashiki" element={<VehicleNoKatashikiTable />} />
-            <Route path="/master/eid-system" element={<EIdSystemTable />} />
 
-            <Route path="/settings/notice" element={<NoticeUpdate />} />
-            <Route path="/settings/d3-security" element={<D3SecurityAuth />} />
-            <Route path="/settings/d3-libro" element={<D3LibroFile />} />
-
-            <Route path="/auth/roles" element={<RoleManagement />} />
-            <Route path="/auth/user-roles" element={<UserRoleManagement />} />
-            <Route path="/auth/admin" element={<AdminTable />} />
-
+            {/* データ出力 */}
             <Route path="/output/offline-update" element={<OfflineUpdateCreate />} />
-            <Route path="/output/html-delivery" element={<HtmlDeliveryCreate />} />
-            <Route path="/output/sms-vehicle" element={<SmsVehicleExport />} />
+            <Route path="/output/html" element={<HtmlFileCreate />} />
+            <Route path="/output/delivery" element={<DeliveryDataCreate />} />
+            <Route path="/output/vehicle-list-html" element={<VehicleListHtmlCreate />} />
 
-            <Route path="/log/electronic" element={<ElectronicManualLog />} />
-            <Route path="/log/html" element={<HtmlManualLog />} />
+            {/* 故障診断 */}
+            <Route path="/diagnosis/install-file" element={<DiagnosisInstallFile />} />
+            <Route path="/diagnosis/security-auth" element={<SecurityAuthManage />} />
+            <Route path="/diagnosis/repro-file" element={<ReproFileMaintenance />} />
+
+            {/* 環境設定 */}
+            <Route path="/settings/connection" element={<ConnectionSettings />} />
           </Routes>
         </Box>
       </Box>

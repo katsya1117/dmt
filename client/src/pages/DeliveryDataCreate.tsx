@@ -1,10 +1,10 @@
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 
-export default function ElectronicManualLog() {
+export default function DeliveryDataCreate() {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h1" gutterBottom>電子マニュアル版ログ情報閲覧</Typography>
+      <Typography variant="h1" gutterBottom>納品データ</Typography>
       <Typography color="text.secondary">（未実装）</Typography>
     </Box>
   )

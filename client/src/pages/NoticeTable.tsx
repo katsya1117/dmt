@@ -1,10 +1,10 @@
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 
-export default function VehicleNoKatashikiTable() {
+export default function NoticeTable() {
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h1" gutterBottom>車両No.型式ID変換テーブルメンテナンス</Typography>
+      <Typography variant="h1" gutterBottom>お知らせ情報テーブル</Typography>
       <Typography color="text.secondary">（未実装）</Typography>
     </Box>
   )

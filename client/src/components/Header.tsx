@@ -8,59 +8,64 @@ import MenuItem from '@mui/material/MenuItem'
 import Typography from '@mui/material/Typography'
 
 type NavItem = { label: string; to: string }
-type NavCategory = { label: string; items: NavItem[] }
+// 子メニューを持つ親（items）か、直接遷移する親（to）か
+type NavCategory = { label: string; items?: NavItem[]; to?: string }
 
 const NAV: NavCategory[] = [
   {
     label: 'アップロード',
     items: [
-      { label: 'サービスニュースファイルアップロード', to: '/upload/service-news' },
-      { label: '車種コンテンツアップロード', to: '/upload/vehicle-content' },
-      { label: '共通コンテンツアップロード', to: '/upload/common-content' },
+      { label: 'サービスニュース', to: '/upload/service-news' },
+      { label: '冊子版', to: '/upload/booklet' },
+      { label: '車種DB', to: '/upload/vehicle-db' },
+      { label: '車種コンテンツ', to: '/upload/vehicle-content' },
+      { label: '共通コンテンツ', to: '/upload/common-content' },
+      { label: 'アプリケーション', to: '/upload/application' },
     ],
   },
   {
-    label: 'マスタ管理',
+    // 子メニューなし。アップロード内容別に絞り込む単一画面
+    label: 'ログ閲覧',
+    to: '/log',
+  },
+  {
+    label: 'メンテナンス',
     items: [
       { label: '車種テーブル', to: '/master/vehicle' },
-      { label: '型式名車名CD変換テーブル', to: '/master/katashiki-name' },
+      { label: 'お知らせ情報テーブル', to: '/master/notice' },
+      { label: 'アカウント認証テーブル', to: '/master/account-auth' },
+      { label: '権限テーブル', to: '/master/role' },
+      { label: 'ユーザー権限テーブル', to: '/master/user-role' },
+      { label: '運用管理者テーブル', to: '/master/admin' },
       { label: 'アプリケーション更新テーブル', to: '/master/app-update' },
       { label: '生産情報テーブル', to: '/master/production-info' },
       { label: '車両情報ファイルテーブル', to: '/master/vehicle-file' },
+      { label: 'システム名変換テーブル', to: '/master/system-name' },
+      { label: '型式名車名CD変換テーブル', to: '/master/katashiki-name' },
       { label: '型式ID車両ID変換テーブル', to: '/master/katashiki-vehicle-id' },
-      { label: '車両No.型式ID変換テーブル', to: '/master/vehicle-no-katashiki' },
-      { label: 'E ID／システム名変換テーブル', to: '/master/eid-system' },
-    ],
-  },
-  {
-    label: '情報・設定管理',
-    items: [
-      { label: 'お知らせ情報更新', to: '/settings/notice' },
-      { label: 'D3 セキュリティ認証情報管理', to: '/settings/d3-security' },
-      { label: 'D3 リブロファイルメンテナンス', to: '/settings/d3-libro' },
-    ],
-  },
-  {
-    label: '権限管理',
-    items: [
-      { label: '権限管理', to: '/auth/roles' },
-      { label: 'ユーザー権限管理', to: '/auth/user-roles' },
-      { label: '管理者テーブルメンテナンス', to: '/auth/admin' },
     ],
   },
   {
     label: 'データ出力',
     items: [
-      { label: 'オフライン更新ファイル作成', to: '/output/offline-update' },
-      { label: 'HTML納品データ作成', to: '/output/html-delivery' },
-      { label: 'SMS閲覧車種登録用ファイル出力', to: '/output/sms-vehicle' },
+      { label: 'オフライン更新ファイル', to: '/output/offline-update' },
+      { label: 'HTML版ファイル', to: '/output/html' },
+      { label: '納品データ', to: '/output/delivery' },
+      { label: '車名一覧用HTML', to: '/output/vehicle-list-html' },
     ],
   },
   {
-    label: 'ログ閲覧',
+    label: '故障診断',
     items: [
-      { label: '電子マニュアル版ログ', to: '/log/electronic' },
-      { label: 'HTML版ログ', to: '/log/html' },
+      { label: '診断AP関連インストールファイル', to: '/diagnosis/install-file' },
+      { label: 'セキュリティ認証情報管理', to: '/diagnosis/security-auth' },
+      { label: 'リプロファイルメンテナンス', to: '/diagnosis/repro-file' },
+    ],
+  },
+  {
+    label: '環境設定',
+    items: [
+      { label: '接続先設定', to: '/settings/connection' },
     ],
   },
 ]
@@ -68,6 +73,19 @@ const NAV: NavCategory[] = [
 function NavDropdown({ category }: { category: NavCategory }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null)
   const navigate = useNavigate()
+
+  // 子メニューを持たない親は直接遷移するボタン
+  if (!category.items) {
+    return (
+      <Button
+        color="inherit"
+        onClick={() => category.to && navigate(category.to)}
+        sx={{ fontSize: '0.8125rem' }}
+      >
+        {category.label}
+      </Button>
+    )
+  }
 
   return (
     <>
