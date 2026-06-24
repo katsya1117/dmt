@@ -1,0 +1,12 @@
+{
+  "name": "maintenance",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n client,server -c blue,green \"yarn --cwd client dev\" \"npm --prefix server run dev\"",
+    "dev:client": "yarn --cwd client dev",
+    "dev:server": "npm --prefix server run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
