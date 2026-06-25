@@ -30,11 +30,13 @@ router.post('/:id', async (req, res) => {
     form.append('files[]', fs.createReadStream(path.join(katashikiDir, name)), name)
   }
 
-  const { default: fetch } = await import('node-fetch')
+  // Node組み込みfetch(undici)へ form-data ストリームを送る。
+  // Nodeストリームをbodyにする場合は duplex: 'half' が必要。
   const phpRes = await fetch(`${config.phpApiUrl}/api/upload.php`, {
     method: 'POST',
-    body: form,
+    body: form as unknown as ReadableStream,
     headers: form.getHeaders(),
+    duplex: 'half',
   })
 
   if (!phpRes.ok) {
