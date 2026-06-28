@@ -1,3 +1,13 @@
+// ┌─────────────────────────────────────────────────────────────┐
+// │ レイヤ: 画面（ページコンポーネント = フローの出発点）          │
+// │ 流れ:  【ここ】 → フック → API関数 → HTTP → Express(or MSW)   │
+// │                                                               │
+// │ 役割: 見た目と操作だけに集中する。データ取得・送信は           │
+// │       useAccountAuth* フックに任せ、自分は fetch を一切書かない。│
+// │  - 一覧表示      : useAccountAuthList() の data を並べる        │
+// │  - 追加/更新/削除: useAccountAuthMutations() を呼ぶ            │
+// │  - 画面固有の状態(ダイアログ開閉・選択行・トースト)だけ useState│
+// └─────────────────────────────────────────────────────────────┘
 import { useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'

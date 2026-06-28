@@ -1,3 +1,15 @@
+// ┌─────────────────────────────────────────────────────────────┐
+// │ レイヤ: API関数（クライアント側の「データの出口」）            │
+// │ 流れ:  画面 → フック → 【ここ】 → HTTP → Express(or MSW)      │
+// │                                                               │
+// │ 役割: fetch を呼ぶのはこのファイルだけ。URL・HTTPメソッド・    │
+// │       エラー処理をここに集約する。画面やフックは fetch を      │
+// │       直接知らない（差し替え・テストが楽になる）。            │
+// │ 型:   サーバーと受け渡しするデータの形（AccountAuth /         │
+// │       AccountAuthInput）もここで定義し、各層で共有する。       │
+// └─────────────────────────────────────────────────────────────┘
+
+// サーバーから返ってくる1件の形（読み取り用。idやupdated_atを含む）
 export type AccountAuth = {
   id: number
   account_id: string
@@ -6,6 +18,8 @@ export type AccountAuth = {
   enabled: number // 0 | 1
   updated_at: string
 }
+
+// 追加・更新で送る形（idやupdated_atはサーバーが決めるので持たない）
 
 export type AccountAuthInput = {
   account_id: string

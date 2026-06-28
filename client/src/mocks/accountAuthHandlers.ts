@@ -1,3 +1,13 @@
+// ┌─────────────────────────────────────────────────────────────┐
+// │ レイヤ: モック（MSW = Expressの代役）                          │
+// │ 流れ:  画面 → フック → API関数 → 【ここが fetch を横取り】    │
+// │                                                               │
+// │ 役割: Storybook/テストでは Express を起動しない。代わりに MSW  │
+// │       が同じURL(/api/account-auth)のリクエストを横取りし、     │
+// │       メモリ上の偽データで応答する。アプリ側のコード(fetchの   │
+// │       URL)は本番と全く同じ＝モック用に分岐を書かなくてよい。   │
+// │ 本物のExpress/SQLite経路は server/src/routes・repositories。   │
+// └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
