@@ -1,9 +1,11 @@
 import { http, HttpResponse, delay } from 'msw'
 import { mockKatashikiList, mockKatashikiFiles } from './data'
 import { accountAuthHandlers } from './accountAuthHandlers'
+import { masterHandlers } from './masterHandlers'
 
 export const handlers = [
   ...accountAuthHandlers,
+  ...masterHandlers,
 
   http.get('/api/katashiki', async () => {
     await delay(200)

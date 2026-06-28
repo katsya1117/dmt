@@ -36,3 +36,44 @@ if (count === 0) {
   const tx = db.transaction(() => seed.forEach((r) => insert.run(...r)))
   tx()
 }
+
+// ─── マスタ: 車種・型式（仮スキーマ。本番は客先DB/dbdに合わせ込む） ───
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vehicle (
+    id    TEXT PRIMARY KEY,   -- 車種ID
+    code  TEXT NOT NULL,      -- 車種コード
+    name  TEXT NOT NULL       -- 車種名
+  );
+  CREATE TABLE IF NOT EXISTS katashiki (
+    id         TEXT PRIMARY KEY,  -- 型式ID
+    vehicle_id TEXT NOT NULL,     -- 所属する車種ID
+    code       TEXT NOT NULL,     -- 型式コード
+    year       TEXT NOT NULL,     -- 年式
+    name       TEXT NOT NULL      -- 型式名
+  );
+`)
+
+const vehicleCount = (db.prepare('SELECT COUNT(*) AS c FROM vehicle').get() as { c: number }).c
+if (vehicleCount === 0) {
+  const vins = db.prepare('INSERT INTO vehicle (id, code, name) VALUES (?, ?, ?)')
+  const kins = db.prepare('INSERT INTO katashiki (id, vehicle_id, code, year, name) VALUES (?, ?, ?, ?, ?)')
+  const vehicles: [string, string, string][] = [
+    ['V001', 'ABC', 'アルファ'],
+    ['V002', 'XYZ', 'ゼータ'],
+    ['V003', 'LMN', 'ルミナ'],
+  ]
+  // 型式 = 車種 × 年式
+  const katashiki: [string, string, string, string, string][] = [
+    ['ABC-2021', 'V001', 'ABC', '2021', 'アルファ 2021'],
+    ['ABC-2022', 'V001', 'ABC', '2022', 'アルファ 2022'],
+    ['ABC-2023', 'V001', 'ABC', '2023', 'アルファ 2023'],
+    ['XYZ-2020', 'V002', 'XYZ', '2020', 'ゼータ 2020'],
+    ['XYZ-2021', 'V002', 'XYZ', '2021', 'ゼータ 2021'],
+    ['LMN-2022', 'V003', 'LMN', '2022', 'ルミナ 2022'],
+  ]
+  const tx = db.transaction(() => {
+    vehicles.forEach((v) => vins.run(...v))
+    katashiki.forEach((k) => kins.run(...k))
+  })
+  tx()
+}
