@@ -7,7 +7,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "gen:types": "openapi-typescript ../server/src/generated/swagger.json -o src/api/generated/schema.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -42,6 +43,7 @@
     "@vitest/coverage-v8": "^4.1.9",
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
+    "openapi-typescript": "^7.13.0",
     "playwright": "^1.61.0",
     "storybook": "^10.4.6",
     "typescript": "^6.0.3",

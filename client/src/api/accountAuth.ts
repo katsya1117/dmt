@@ -3,30 +3,17 @@
 // │ 流れ:  画面 → フック → 【ここ】 → HTTP → Express(or MSW)      │
 // │                                                               │
 // │ 役割: fetch を呼ぶのはこのファイルだけ。URL・HTTPメソッド・    │
-// │       エラー処理をここに集約する。画面やフックは fetch を      │
-// │       直接知らない（差し替え・テストが楽になる）。            │
-// │ 型:   サーバーと受け渡しするデータの形（AccountAuth /         │
-// │       AccountAuthInput）もここで定義し、各層で共有する。       │
+// │       エラー処理をここに集約する。                            │
+// │ 型:   AccountAuth / AccountAuthInput は **サーバーのtsoa       │
+// │       コントローラが生成した OpenAPI仕様から自動生成**         │
+// │       （client/src/api/generated/schema.ts）。手書きの二重     │
+// │       定義は廃止し、サーバーの型を単一の真実とする。           │
+// │       更新は `yarn gen:api`（仕様→型を再生成）。               │
 // └─────────────────────────────────────────────────────────────┘
+import type { components } from './generated/schema'
 
-// サーバーから返ってくる1件の形（読み取り用。idやupdated_atを含む）
-export type AccountAuth = {
-  id: number
-  account_id: string
-  auth_key: string
-  valid_until: string | null
-  enabled: number // 0 | 1
-  updated_at: string
-}
-
-// 追加・更新で送る形（idやupdated_atはサーバーが決めるので持たない）
-
-export type AccountAuthInput = {
-  account_id: string
-  auth_key: string
-  valid_until?: string | null
-  enabled?: number
-}
+export type AccountAuth = components['schemas']['AccountAuth']
+export type AccountAuthInput = components['schemas']['AccountAuthInput']
 
 export async function fetchAccountAuthList(): Promise<AccountAuth[]> {
   const res = await fetch('/api/account-auth')
