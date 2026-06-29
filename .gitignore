@@ -32,3 +32,6 @@ yarn-error.log*
 
 # Local demo DB (SQLite)
 server/data/
+
+# tsoa generated (routes/spec) — dev/buildで自動生成
+server/src/generated/
