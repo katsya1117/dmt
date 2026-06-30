@@ -16,7 +16,7 @@ const sampleRow: AccountAuth = {
 function Harness({ target }: { target: AccountAuth | null }) {
   const [open, setOpen] = useState(true)
   const [submitted, setSubmitted] = useState<AccountAuthInput | null>(null)
-  const handleSubmit = (input: AccountAuthInput) => { setSubmitted(input); setOpen(false) }
+  const handleSubmit = async (input: AccountAuthInput) => { setSubmitted(input) }
   return (
     <div style={{ padding: 16 }}>
       <Button variant="outlined" onClick={() => setOpen(true)}>ダイアログを開く</Button>
@@ -26,6 +26,7 @@ function Harness({ target }: { target: AccountAuth | null }) {
         target={target}
         onClose={() => setOpen(false)}
         onSubmit={handleSubmit}
+        onSuccess={() => setOpen(false)}
       />
     </div>
   )

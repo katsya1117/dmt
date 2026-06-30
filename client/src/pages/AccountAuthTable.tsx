@@ -65,21 +65,19 @@ export default function AccountAuthTable() {
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
   const openEdit = (row: AccountAuth) => { setEditTarget(row); setDialogOpen(true) }
 
-  const handleSubmit = (input: AccountAuthInput) => {
+  // 送信はPromiseを返す（失敗はthrowされ、ダイアログがフィールドエラーに紐付ける）
+  const handleSubmit = async (input: AccountAuthInput) => {
     if (editTarget) {
-      update.mutate(
-        { id: editTarget.id, input },
-        {
-          onSuccess: () => { setDialogOpen(false); setToast({ msg: '更新しました', severity: 'success' }) },
-          onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
-        }
-      )
+      await update.mutateAsync({ id: editTarget.id, input })
     } else {
-      create.mutate([input], {
-        onSuccess: () => { setDialogOpen(false); setToast({ msg: '追加しました', severity: 'success' }) },
-        onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
-      })
+      await create.mutateAsync([input])
     }
+  }
+
+  // 送信成功時：ダイアログを閉じてトースト
+  const handleSuccess = () => {
+    setDialogOpen(false)
+    setToast({ msg: editTarget ? '更新しました' : '追加しました', severity: 'success' })
   }
 
   const handleDelete = (row: AccountAuth) => {
@@ -161,6 +159,7 @@ export default function AccountAuthTable() {
         target={editTarget}
         onClose={() => setDialogOpen(false)}
         onSubmit={handleSubmit}
+        onSuccess={handleSuccess}
         submitting={create.isPending || update.isPending}
       />
 

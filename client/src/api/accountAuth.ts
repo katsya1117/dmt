@@ -11,13 +11,21 @@
 // │       更新は `yarn gen:api`（仕様→型を再生成）。               │
 // └─────────────────────────────────────────────────────────────┘
 import type { components } from './generated/schema'
+import { ApiError } from './error'
 
 export type AccountAuth = components['schemas']['AccountAuth']
 export type AccountAuthInput = components['schemas']['AccountAuthInput']
 
+// 失敗時は ApiError（status・body付き）を投げる → 画面側でフィールドエラーかトーストかを判断
+async function fail(res: Response, fallback: string): Promise<never> {
+  const body = await res.json().catch(() => ({}))
+  const message = (body.error ?? body.message ?? `${fallback} (${res.status})`) as string
+  throw new ApiError(res.status, body, message)
+}
+
 export async function fetchAccountAuthList(): Promise<AccountAuth[]> {
   const res = await fetch('/api/account-auth')
-  if (!res.ok) throw new Error(`アカウント認証一覧の取得に失敗しました (${res.status})`)
+  if (!res.ok) return fail(res, 'アカウント認証一覧の取得に失敗しました')
   return res.json()
 }
 
@@ -28,10 +36,7 @@ export async function createAccountAuth(records: AccountAuthInput[]): Promise<{ 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ records }),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `追加に失敗しました (${res.status})`)
-  }
+  if (!res.ok) return fail(res, '追加に失敗しました')
   return res.json()
 }
 
@@ -41,15 +46,12 @@ export async function updateAccountAuth(id: number, input: AccountAuthInput): Pr
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `更新に失敗しました (${res.status})`)
-  }
+  if (!res.ok) return fail(res, '更新に失敗しました')
   return res.json()
 }
 
 export async function deleteAccountAuth(id: number): Promise<{ deleted: number }> {
   const res = await fetch(`/api/account-auth/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(`削除に失敗しました (${res.status})`)
+  if (!res.ok) return fail(res, '削除に失敗しました')
   return res.json()
 }

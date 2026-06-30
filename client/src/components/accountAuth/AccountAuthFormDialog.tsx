@@ -1,17 +1,19 @@
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, type Path } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import Grid from '@mui/material/Grid'
+import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
 import { RhfTextField } from '../form/RhfTextField'
 import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
+import { toFieldErrors } from '../../api/error'
 
 const schema = z.object({
   username: z.string().min(1, 'ユーザー名は必須です'),
@@ -41,21 +43,28 @@ type Props = {
   /** 編集対象。null なら新規追加 */
   target: AccountAuth | null
   onClose: () => void
-  onSubmit: (input: AccountAuthInput) => void
+  /** 送信。失敗時は ApiError を throw する想定（フィールドエラー紐付けのため await する） */
+  onSubmit: (input: AccountAuthInput) => Promise<void>
+  /** 送信成功時（ダイアログを閉じる等は呼び出し側） */
+  onSuccess: () => void
   submitting?: boolean
 }
 
 // 空文字 → null（書き込み型は null可カラムを `| null` で表現）
 const orNull = (s: string): string | null => (s.trim() === '' ? null : s)
 
-export function AccountAuthFormDialog({ open, target, onClose, onSubmit, submitting }: Props) {
-  const { control, handleSubmit, reset } = useForm<FormValues>({
+export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSuccess, submitting }: Props) {
+  const { control, handleSubmit, reset, setError } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: empty,
+    mode: 'onTouched', // 触った項目から順にリアルタイム検証（世の中の標準的な体感）
   })
+  // どのフォーム項目にも紐付かないサーバーエラー（通信断・500等）はここに出す
+  const [formError, setFormError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) return
+    setFormError(null)
     reset(
       target
         ? {
@@ -77,22 +86,38 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, submitt
     )
   }, [open, target, reset])
 
-  const submit = (v: FormValues) => {
-    onSubmit({
-      username: v.username,
-      password: v.password,
-      comment: orNull(v.comment),
-      number: v.number.trim() === '' ? null : Number(v.number),
-      submission_date: orNull(v.submission_date),
-      regist_date: orNull(v.regist_date),
-      company_cd: orNull(v.company_cd),
-      company_name: orNull(v.company_name),
-      company_store_cd: orNull(v.company_store_cd),
-      company_store_branch_num: orNull(v.company_store_branch_num),
-      non_sync: v.non_sync,
-      store_cd: orNull(v.store_cd),
-      store_name: orNull(v.store_name),
-    })
+  // フォーム上のフィールド名（サーバーエラーをこの集合だけ項目に紐付ける）
+  const FIELD_NAMES = new Set(Object.keys(empty))
+
+  const submit = async (v: FormValues) => {
+    setFormError(null)
+    try {
+      await onSubmit({
+        username: v.username,
+        password: v.password,
+        comment: orNull(v.comment),
+        number: v.number.trim() === '' ? null : Number(v.number),
+        submission_date: orNull(v.submission_date),
+        regist_date: orNull(v.regist_date),
+        company_cd: orNull(v.company_cd),
+        company_name: orNull(v.company_name),
+        company_store_cd: orNull(v.company_store_cd),
+        company_store_branch_num: orNull(v.company_store_branch_num),
+        non_sync: v.non_sync,
+        store_cd: orNull(v.store_cd),
+        store_name: orNull(v.store_name),
+      })
+      onSuccess()
+    } catch (err) {
+      // サーバーエラーを「項目下の赤字」へ。紐付かないものは上部Alertへ。
+      const fieldErrors = toFieldErrors(err)
+      const mapped = Object.entries(fieldErrors).filter(([f]) => FIELD_NAMES.has(f))
+      if (mapped.length > 0) {
+        mapped.forEach(([f, message]) => setError(f as Path<FormValues>, { type: 'server', message }))
+      } else {
+        setFormError(err instanceof Error ? err.message : '保存に失敗しました')
+      }
+    }
   }
 
   const half = { xs: 12, sm: 6 } as const
@@ -103,6 +128,7 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, submitt
       <DialogTitle>{target ? 'アカウント認証の編集' : 'アカウント認証の新規追加'}</DialogTitle>
       <form onSubmit={handleSubmit(submit)}>
         <DialogContent>
+          {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0 }}>
             <Grid size={half}><RhfTextField name="username" control={control} label="ユーザー名" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="password" control={control} label="パスワード" size="small" fullWidth /></Grid>
