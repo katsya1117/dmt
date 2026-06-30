@@ -1,39 +1,49 @@
 // ┌─────────────────────────────────────────────────────────────┐
 // │ レイヤ: モック（MSW = Expressの代役）                          │
-// │ 流れ:  画面 → フック → API関数 → 【ここが fetch を横取り】    │
-// │                                                               │
-// │ 役割: Storybook/テストでは Express を起動しない。代わりに MSW  │
-// │       が同じURL(/api/account-auth)のリクエストを横取りし、     │
-// │       メモリ上の偽データで応答する。アプリ側のコード(fetchの   │
-// │       URL)は本番と全く同じ＝モック用に分岐を書かなくてよい。   │
-// │ 本物のExpress/SQLite経路は server/src/routes・repositories。   │
+// │ Storybook/テストで Express を起動せず、fetch を横取りして      │
+// │ メモリ上の偽データで応答する。CRUD・論理削除も再現。           │
 // └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
-// Storybook/テスト上で実際にCRUDが反映されるよう、メモリ上に状態を持つ。
-// resetAccountAuthMock() で初期状態に戻せる。
+const ts = '2026-07-01 09:00:00'
+
 const initialRows: AccountAuth[] = [
-  { id: 1, account_id: 'dealer001', auth_key: 'KEY-AB12-CD34', valid_until: '2027-03-31', enabled: 1, updated_at: '2026-06-25 08:03:57' },
-  { id: 2, account_id: 'dealer002', auth_key: 'KEY-EF56-GH78', valid_until: '2027-03-31', enabled: 1, updated_at: '2026-06-25 08:03:57' },
-  { id: 3, account_id: 'dealer003', auth_key: 'KEY-IJ90-KL12', valid_until: '2026-12-31', enabled: 0, updated_at: '2026-06-25 08:03:57' },
-  { id: 4, account_id: 'admin-honsha', auth_key: 'KEY-MN34-OP56', valid_until: '2028-03-31', enabled: 1, updated_at: '2026-06-25 08:03:57' },
+  {
+    id: 1, username: 'dealer001', password: 'pw-001', comment: '東日本エリア', number: 1001,
+    submission_date: '2024-04-01', regist_date: '2024-04-05',
+    company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
+    non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
+  },
+  {
+    id: 2, username: 'dealer002', password: 'pw-002', comment: null, number: 1002,
+    submission_date: '2024-05-10', regist_date: '2024-05-12',
+    company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
+    non_sync: true, store_cd: 'S002', store_name: '仙台駅前店', reg_date: ts, upd_date: ts, delfg: false,
+  },
+  {
+    id: 3, username: 'admin-honsha', password: 'pw-adm', comment: '本社管理', number: 9001,
+    submission_date: null, regist_date: '2023-01-01',
+    company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
+    non_sync: false, store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg: false,
+  },
 ]
 
 let rows: AccountAuth[] = structuredClone(initialRows)
-let nextId = 5
+let nextId = 4
 
 export function resetAccountAuthMock() {
   rows = structuredClone(initialRows)
-  nextId = 5
+  nextId = 4
 }
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
+const visible = () => rows.filter((r) => !r.delfg)
 
 export const accountAuthHandlers = [
   http.get('/api/account-auth', async () => {
     await delay(150)
-    return HttpResponse.json(rows)
+    return HttpResponse.json(visible())
   }),
 
   http.post('/api/account-auth', async ({ request }) => {
@@ -44,22 +54,12 @@ export const accountAuthHandlers = [
       return HttpResponse.json({ error: 'records（配列）が必要です' }, { status: 400 })
     }
     for (const r of records) {
-      if (!r.account_id || !r.auth_key) {
-        return HttpResponse.json({ error: 'account_id と auth_key は必須です' }, { status: 400 })
-      }
-      if (rows.some((x) => x.account_id === r.account_id)) {
-        return HttpResponse.json({ error: `UNIQUE constraint failed: ${r.account_id}` }, { status: 409 })
+      if (visible().some((x) => x.username === r.username)) {
+        return HttpResponse.json({ error: `UNIQUE constraint failed: ${r.username}` }, { status: 409 })
       }
     }
     for (const r of records) {
-      rows.push({
-        id: nextId++,
-        account_id: r.account_id,
-        auth_key: r.auth_key,
-        valid_until: r.valid_until ?? null,
-        enabled: r.enabled ?? 1,
-        updated_at: now(),
-      })
+      rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now(), delfg: false })
     }
     return HttpResponse.json({ inserted: records.length }, { status: 201 })
   }),
@@ -68,25 +68,18 @@ export const accountAuthHandlers = [
     await delay(150)
     const id = Number(params.id)
     const input = (await request.json()) as AccountAuthInput
-    const idx = rows.findIndex((x) => x.id === id)
+    const idx = rows.findIndex((x) => x.id === id && !x.delfg)
     if (idx === -1) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
-    rows[idx] = {
-      ...rows[idx],
-      account_id: input.account_id,
-      auth_key: input.auth_key,
-      valid_until: input.valid_until ?? null,
-      enabled: input.enabled ?? 1,
-      updated_at: now(),
-    }
+    rows[idx] = { ...rows[idx], ...input, id, upd_date: now() }
     return HttpResponse.json(rows[idx])
   }),
 
   http.delete('/api/account-auth/:id', async ({ params }) => {
     await delay(150)
     const id = Number(params.id)
-    const before = rows.length
-    rows = rows.filter((x) => x.id !== id)
-    if (rows.length === before) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
+    const target = rows.find((x) => x.id === id && !x.delfg)
+    if (!target) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
+    target.delfg = true // 論理削除
     return HttpResponse.json({ deleted: 1 })
   }),
 ]

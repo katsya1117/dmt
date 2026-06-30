@@ -33,6 +33,26 @@ import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthForm
 import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
+// 一覧に出すカラム（non_sync/操作 は別途レンダリング）
+const TEXT_COLS: { key: keyof AccountAuth; label: string }[] = [
+  { key: 'id', label: 'ID' },
+  { key: 'username', label: 'ユーザー名' },
+  { key: 'password', label: 'パスワード' },
+  { key: 'number', label: 'No.' },
+  { key: 'submission_date', label: '申込日' },
+  { key: 'regist_date', label: '登録日' },
+  { key: 'company_cd', label: '販社CD' },
+  { key: 'company_name', label: '販売会社' },
+  { key: 'company_store_cd', label: '販売会社店舗CD' },
+  { key: 'company_store_branch_num', label: '枝番' },
+  { key: 'store_cd', label: '販売店CD' },
+  { key: 'store_name', label: '販売店名' },
+  { key: 'comment', label: '備考' },
+  { key: 'reg_date', label: '登録日時' },
+  { key: 'upd_date', label: '更新日時' },
+]
+const COL_SPAN = TEXT_COLS.length + 2 // + 診断対象外 + 操作
+
 export default function AccountAuthTable() {
   const { data, isLoading, error } = useAccountAuthList()
   const { create, update, remove } = useAccountAuthMutations()
@@ -63,7 +83,7 @@ export default function AccountAuthTable() {
   }
 
   const handleDelete = (row: AccountAuth) => {
-    if (!confirm(`「${row.account_id}」を削除しますか？`)) return
+    if (!confirm(`「${row.username}」を削除しますか？`)) return
     remove.mutate(row.id, {
       onSuccess: () => setToast({ msg: '削除しました', severity: 'success' }),
       onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
@@ -101,36 +121,31 @@ export default function AccountAuthTable() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      <TableContainer component={Paper}>
-        <Table size="small">
+      <TableContainer component={Paper} sx={{ maxHeight: '70vh' }}>
+        <Table size="small" stickyHeader sx={{ whiteSpace: 'nowrap' }}>
           <TableHead>
             <TableRow>
-              <TableCell>ID</TableCell>
-              <TableCell>アカウントID</TableCell>
-              <TableCell>認証キー</TableCell>
-              <TableCell>有効期限</TableCell>
-              <TableCell>有効</TableCell>
-              <TableCell>更新日時</TableCell>
+              {TEXT_COLS.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
+              <TableCell>診断対象外</TableCell>
               <TableCell align="right">操作</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading && (
-              <TableRow><TableCell colSpan={7}>読み込み中...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={COL_SPAN}>読み込み中...</TableCell></TableRow>
             )}
             {!isLoading && data?.length === 0 && (
-              <TableRow><TableCell colSpan={7}>データがありません</TableCell></TableRow>
+              <TableRow><TableCell colSpan={COL_SPAN}>データがありません</TableCell></TableRow>
             )}
             {data?.map((row) => (
               <TableRow key={row.id} hover>
-                <TableCell>{row.id}</TableCell>
-                <TableCell>{row.account_id}</TableCell>
-                <TableCell>{row.auth_key}</TableCell>
-                <TableCell>{row.valid_until ?? '—'}</TableCell>
+                {TEXT_COLS.map((c) => {
+                  const v = row[c.key]
+                  return <TableCell key={c.key}>{v === null || v === undefined ? '—' : String(v)}</TableCell>
+                })}
                 <TableCell>
-                  <Chip label={row.enabled ? '有効' : '無効'} color={row.enabled ? 'primary' : 'default'} size="small" />
+                  <Chip label={row.non_sync ? '対象外' : '通常'} color={row.non_sync ? 'warning' : 'default'} size="small" />
                 </TableCell>
-                <TableCell>{row.updated_at}</TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => openEdit(row)} aria-label="編集"><EditIcon fontSize="small" /></IconButton>
                   <IconButton size="small" onClick={() => handleDelete(row)} aria-label="削除"><DeleteIcon fontSize="small" /></IconButton>

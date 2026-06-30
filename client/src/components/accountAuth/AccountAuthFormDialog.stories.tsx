@@ -5,12 +5,11 @@ import { AccountAuthFormDialog } from './AccountAuthFormDialog'
 import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
 
 const sampleRow: AccountAuth = {
-  id: 2,
-  account_id: 'dealer002',
-  auth_key: 'KEY-EF56-GH78',
-  valid_until: '2027-03-31',
-  enabled: 1,
-  updated_at: '2026-06-25 08:03:57',
+  id: 2, username: 'dealer002', password: 'pw-002', comment: null, number: 1002,
+  submission_date: '2024-05-10', regist_date: '2024-05-12',
+  company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
+  non_sync: true, store_cd: 'S002', store_name: '仙台駅前店',
+  reg_date: '2026-07-01 09:00:00', upd_date: '2026-07-01 09:00:00', delfg: false,
 }
 
 // 開閉とsubmit内容の確認用ラッパー

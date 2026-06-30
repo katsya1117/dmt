@@ -1,26 +1,37 @@
 import ExcelJS from 'exceljs'
 import type { AccountAuthInput } from '../../api/accountAuth'
 
-// Excelのヘッダー名（日本語/英語どちらでも受け付ける）→ フィールドの対応
+// Excelのヘッダー名（日本語/英語どちらでも）→ フィールドの対応
 const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
-  'アカウントID': 'account_id',
-  account_id: 'account_id',
-  '認証キー': 'auth_key',
-  auth_key: 'auth_key',
-  '有効期限': 'valid_until',
-  valid_until: 'valid_until',
-  '有効': 'enabled',
-  enabled: 'enabled',
+  'ユーザー名': 'username', username: 'username',
+  'パスワード': 'password', password: 'password',
+  '備考': 'comment', comment: 'comment',
+  'No.': 'number', number: 'number',
+  '申込日': 'submission_date', submission_date: 'submission_date',
+  '登録日': 'regist_date', regist_date: 'regist_date',
+  '販社CD': 'company_cd', company_cd: 'company_cd',
+  '販売会社': 'company_name', company_name: 'company_name',
+  '販売会社店舗CD': 'company_store_cd', company_store_cd: 'company_store_cd',
+  '枝番': 'company_store_branch_num', company_store_branch_num: 'company_store_branch_num',
+  '診断データ対象外': 'non_sync', non_sync: 'non_sync',
+  '販売店CD': 'store_cd', store_cd: 'store_cd',
+  '販売店名': 'store_name', store_name: 'store_name',
 }
 
-/** セル値を文字列へ正規化（Date は YYYY-MM-DD に） */
 function cellToString(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toISOString().slice(0, 10)
   if (typeof value === 'object' && 'text' in (value as Record<string, unknown>)) {
-    return String((value as { text: unknown }).text) // リッチテキスト等
+    return String((value as { text: unknown }).text)
   }
   return String(value)
+}
+
+function toBool(v: unknown): boolean {
+  if (v === 1 || v === true) return true
+  if (v === 0 || v === false || v == null) return false
+  const s = cellToString(v).trim()
+  return ['1', 'true', 'TRUE', '対象外', '○', 'yes', 'Y'].includes(s)
 }
 
 /** .xlsx ファイルを読み、AccountAuthInput[] に変換する */
@@ -31,7 +42,6 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
   const ws = wb.worksheets[0]
   if (!ws) return []
 
-  // 1行目をヘッダーとして列番号→フィールド名の対応を作る
   const colToField: Record<number, keyof AccountAuthInput> = {}
   ws.getRow(1).eachCell((cell, col) => {
     const field = HEADER_MAP[cellToString(cell.value).trim()]
@@ -40,28 +50,33 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
 
   const result: AccountAuthInput[] = []
   ws.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return // ヘッダー行をスキップ
-    const out: Partial<Record<keyof AccountAuthInput, unknown>> = {}
+    if (rowNumber === 1) return
+    const raw: Partial<Record<keyof AccountAuthInput, unknown>> = {}
     for (const [colStr, field] of Object.entries(colToField)) {
-      out[field] = row.getCell(Number(colStr)).value
+      raw[field] = row.getCell(Number(colStr)).value
     }
+    const orNull = (k: keyof AccountAuthInput): string | null => {
+      const s = cellToString(raw[k]).trim()
+      return s === '' ? null : s
+    }
+    const numText = cellToString(raw.number).trim()
     const record: AccountAuthInput = {
-      account_id: cellToString(out.account_id).trim(),
-      auth_key: cellToString(out.auth_key).trim(),
-      valid_until: out.valid_until ? cellToString(out.valid_until).trim() : null,
-      enabled: normalizeEnabled(out.enabled),
+      username: cellToString(raw.username).trim(),
+      password: cellToString(raw.password).trim(),
+      comment: orNull('comment'),
+      number: numText === '' ? null : Number(numText),
+      submission_date: orNull('submission_date'),
+      regist_date: orNull('regist_date'),
+      company_cd: orNull('company_cd'),
+      company_name: orNull('company_name'),
+      company_store_cd: orNull('company_store_cd'),
+      company_store_branch_num: orNull('company_store_branch_num'),
+      non_sync: toBool(raw.non_sync),
+      store_cd: orNull('store_cd'),
+      store_name: orNull('store_name'),
     }
-    if (record.account_id || record.auth_key) result.push(record) // 空行を除外
+    if (record.username || record.password) result.push(record) // 空行を除外
   })
 
   return result
-}
-
-function normalizeEnabled(v: unknown): number {
-  if (v === 1 || v === '1' || v === true) return 1
-  if (v === 0 || v === '0' || v === false) return 0
-  const s = cellToString(v).trim()
-  if (['有効', 'true', 'TRUE', '○', 'yes', 'Y'].includes(s)) return 1
-  if (['無効', 'false', 'FALSE', '×', 'no', 'N'].includes(s)) return 0
-  return 1 // 既定は有効
 }

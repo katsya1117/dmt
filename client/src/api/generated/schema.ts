@@ -45,12 +45,23 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AccountAuth: {
-            updated_at: string;
+            delfg: boolean;
+            upd_date: string;
+            reg_date: string;
+            store_name: string | null;
+            store_cd: string | null;
+            non_sync: boolean;
+            company_store_branch_num: string | null;
+            company_store_cd: string | null;
+            company_name: string | null;
+            company_cd: string | null;
+            regist_date: string | null;
+            submission_date: string | null;
             /** Format: double */
-            enabled: number;
-            valid_until: string | null;
-            auth_key: string;
-            account_id: string;
+            number: number | null;
+            comment: string | null;
+            password: string;
+            username: string;
             /** Format: double */
             id: number;
         };
@@ -58,11 +69,20 @@ export interface components {
             error: string;
         };
         AccountAuthInput: {
+            store_name: string | null;
+            store_cd: string | null;
+            non_sync: boolean;
+            company_store_branch_num: string | null;
+            company_store_cd: string | null;
+            company_name: string | null;
+            company_cd: string | null;
+            regist_date: string | null;
+            submission_date: string | null;
             /** Format: double */
-            enabled?: number;
-            valid_until?: string | null;
-            auth_key: string;
-            account_id: string;
+            number: number | null;
+            comment: string | null;
+            password: string;
+            username: string;
         };
         CreateAccountAuthBody: {
             records: components["schemas"]["AccountAuthInput"][];
