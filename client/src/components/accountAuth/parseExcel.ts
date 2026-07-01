@@ -74,6 +74,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       non_sync: toBool(raw.non_sync),
       store_cd: orNull('store_cd'),
       store_name: orNull('store_name'),
+      delfg: false, // Excel取り込みの新規は未削除
     }
     if (record.username || record.password) result.push(record) // 空行を除外
   })

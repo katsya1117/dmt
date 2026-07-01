@@ -25,7 +25,7 @@ import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import EditIcon from '@mui/icons-material/Edit'
-import DeleteIcon from '@mui/icons-material/Delete'
+// import DeleteIcon from '@mui/icons-material/Delete' // 削除機能 未開放。開放時に戻す
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAccountAuthList, useAccountAuthMutations } from '../hooks/useAccountAuth'
@@ -55,7 +55,7 @@ const COL_SPAN = TEXT_COLS.length + 2 // + 診断対象外 + 操作
 
 export default function AccountAuthTable() {
   const { data, isLoading, error } = useAccountAuthList()
-  const { create, update, remove } = useAccountAuthMutations()
+  const { create, update } = useAccountAuthMutations() // remove は削除機能未開放のため不使用
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
@@ -80,13 +80,16 @@ export default function AccountAuthTable() {
     setToast({ msg: editTarget ? '更新しました' : '追加しました', severity: 'success' })
   }
 
-  const handleDelete = (row: AccountAuth) => {
-    if (!confirm(`「${row.username}」を削除しますか？`)) return
-    remove.mutate(row.id, {
-      onSuccess: () => setToast({ msg: '削除しました', severity: 'success' }),
-      onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
-    })
-  }
+  // 【削除機能 未開放】客先DBで物理削除が不調のため。論理削除は編集フォームの
+  // delfg スイッチ（PUT）で行う。開放する時はこの関数と一覧の削除ボタン、
+  // 下の useAccountAuthMutations の remove を戻す。
+  // const handleDelete = (row: AccountAuth) => {
+  //   if (!confirm(`「${row.username}」を削除しますか？`)) return
+  //   remove.mutate(row.id, {
+  //     onSuccess: () => setToast({ msg: '削除しました', severity: 'success' }),
+  //     onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
+  //   })
+  // }
 
   const handleExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -146,7 +149,8 @@ export default function AccountAuthTable() {
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => openEdit(row)} aria-label="編集"><EditIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => handleDelete(row)} aria-label="削除"><DeleteIcon fontSize="small" /></IconButton>
+                  {/* 削除機能 未開放（論理削除は編集フォームのdelfgで行う）。開放時に戻す:
+                  <IconButton size="small" onClick={() => handleDelete(row)} aria-label="削除"><DeleteIcon fontSize="small" /></IconButton> */}
                 </TableCell>
               </TableRow>
             ))}

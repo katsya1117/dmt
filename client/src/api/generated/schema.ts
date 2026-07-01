@@ -33,8 +33,7 @@ export interface paths {
         /** @description 更新 */
         put: operations["Update"];
         post?: never;
-        /** @description 削除 */
-        delete: operations["Remove"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -69,6 +68,7 @@ export interface components {
             error: string;
         };
         AccountAuthInput: {
+            delfg: boolean;
             store_name: string | null;
             store_cd: string | null;
             non_sync: boolean;
@@ -174,40 +174,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountAuth"] | components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 対象が見つかりません */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    Remove: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ok */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: double */
-                        deleted: number;
-                    } | components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description 対象が見つかりません */

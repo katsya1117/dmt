@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Path, Post, Put, Route, SuccessResponse, Response, Tags } from 'tsoa'
+// ※ DELETE を開放する時は import に `Delete` を、下記import に `deleteAccountAuth` を戻す
+import { Body, Controller, Get, Path, Post, Put, Route, SuccessResponse, Response, Tags } from 'tsoa'
 import {
   listAccountAuth,
   createAccountAuth,
   updateAccountAuth,
-  deleteAccountAuth,
+  // deleteAccountAuth, // ← DELETE未開放。開放時に戻す
   type AccountAuth,
   type AccountAuthInput,
 } from '../repositories/accountAuth'
@@ -65,15 +66,22 @@ export class AccountAuthController extends Controller {
     }
   }
 
-  /** 削除 */
-  @Delete('{id}')
-  @Response<ErrorResponse>(404, '対象が見つかりません')
-  public async remove(@Path() id: number): Promise<{ deleted: number } | ErrorResponse> {
-    const result = deleteAccountAuth(id)
-    if (result.deleted === 0) {
-      this.setStatus(404)
-      return { error: '対象が見つかりません' }
-    }
-    return result
-  }
+  // ─────────────────────────────────────────────────────────────
+  // 【DELETE 未開放】客先DBで物理削除が不調のため開放しない。
+  // 論理削除は delfg を PUT で更新して行う（AccountAuthInput に delfg あり）。
+  // 開放する時：このブロックのコメントを外し、上部importの Delete /
+  // deleteAccountAuth を復活させる。
+  //
+  // /** 削除 */
+  // @Delete('{id}')
+  // @Response<ErrorResponse>(404, '対象が見つかりません')
+  // public async remove(@Path() id: number): Promise<{ deleted: number } | ErrorResponse> {
+  //   const result = deleteAccountAuth(id)
+  //   if (result.deleted === 0) {
+  //     this.setStatus(404)
+  //     return { error: '対象が見つかりません' }
+  //   }
+  //   return result
+  // }
+  // ─────────────────────────────────────────────────────────────
 }

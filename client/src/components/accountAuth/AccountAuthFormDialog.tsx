@@ -29,13 +29,14 @@ const schema = z.object({
   non_sync: z.boolean(),
   store_cd: z.string(),
   store_name: z.string(),
+  delfg: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
 
 const empty: FormValues = {
   username: '', password: '', comment: '', number: '', submission_date: '', regist_date: '',
   company_cd: '', company_name: '', company_store_cd: '', company_store_branch_num: '',
-  non_sync: false, store_cd: '', store_name: '',
+  non_sync: false, store_cd: '', store_name: '', delfg: false,
 }
 
 type Props = {
@@ -81,6 +82,7 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
             non_sync: target.non_sync,
             store_cd: target.store_cd ?? '',
             store_name: target.store_name ?? '',
+            delfg: target.delfg,
           }
         : empty
     )
@@ -106,6 +108,7 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
         non_sync: v.non_sync,
         store_cd: orNull(v.store_cd),
         store_name: orNull(v.store_name),
+        delfg: v.delfg,
       })
       onSuccess()
     } catch (err) {
@@ -150,6 +153,14 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
             <Grid size={half}><RhfTextField name="store_cd" control={control} label="販売店CD" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_name" control={control} label="販売店名" size="small" fullWidth /></Grid>
             <Grid size={12}><RhfTextField name="comment" control={control} label="備考" size="small" fullWidth multiline minRows={2} /></Grid>
+            <Grid size={12}>
+              <Controller name="delfg" control={control} render={({ field }) => (
+                <FormControlLabel
+                  control={<Switch color="error" checked={field.value} onChange={(e) => field.onChange(e.target.checked)} />}
+                  label="削除フラグ（ONで論理削除。保存すると一覧から消えます）"
+                />
+              )} />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>

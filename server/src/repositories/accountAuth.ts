@@ -43,6 +43,7 @@ export type AccountAuthInput = {
   non_sync: boolean
   store_cd: string | null
   store_name: string | null
+  delfg: boolean // 論理削除フラグ。ユーザーが手動編集（PUTで論理削除）。DELETE APIは未開放
 }
 
 // DBの生の行（tinyintはinteger）
@@ -71,12 +72,12 @@ export function createAccountAuth(records: AccountAuthInput[]): { inserted: numb
     VALUES
       (@username, @password, @comment, @number, @submission_date, @regist_date,
        @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
-       @non_sync, @store_cd, @store_name, @reg_date, @upd_date, 0)
+       @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
   `)
   const tx = db.transaction((rows: AccountAuthInput[]) => {
     const ts = nowStr()
     for (const r of rows) {
-      stmt.run({ ...r, non_sync: r.non_sync ? 1 : 0, reg_date: ts, upd_date: ts })
+      stmt.run({ ...r, non_sync: r.non_sync ? 1 : 0, delfg: r.delfg ? 1 : 0, reg_date: ts, upd_date: ts })
     }
   })
   tx(records)
@@ -91,11 +92,12 @@ export function updateAccountAuth(id: number, input: AccountAuthInput): AccountA
       company_cd = @company_cd, company_name = @company_name,
       company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
       non_sync = @non_sync, store_cd = @store_cd, store_name = @store_name,
-      upd_date = @upd_date
+      delfg = @delfg, upd_date = @upd_date
     WHERE id = @id AND delfg = 0
-  `).run({ ...input, id, non_sync: input.non_sync ? 1 : 0, upd_date: nowStr() })
+  `).run({ ...input, id, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, upd_date: nowStr() })
 
-  const row = db.prepare('SELECT * FROM account_auth WHERE id = ? AND delfg = 0').get(id) as Row | undefined
+  // 更新後の行を返す。delfg=1（論理削除）にした直後でも返せるよう delfg 条件は付けない
+  const row = db.prepare('SELECT * FROM account_auth WHERE id = ?').get(id) as Row | undefined
   return row ? toApi(row) : null
 }
 

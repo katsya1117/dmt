@@ -59,7 +59,7 @@ export const accountAuthHandlers = [
       }
     }
     for (const r of records) {
-      rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now(), delfg: false })
+      rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
     }
     return HttpResponse.json({ inserted: records.length }, { status: 201 })
   }),
