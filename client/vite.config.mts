@@ -14,6 +14,7 @@ export default defineConfig({
     port: 5173,
     host: true,
     open: false, // サンドボックス環境では外部ブラウザを開かない
+    allowedHosts: true, // v0プレビュー等の外部ホストからのアクセスを許可
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
