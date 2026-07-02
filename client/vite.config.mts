@@ -12,7 +12,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    open: true, // 起動時にOS標準の外部ブラウザを自動で開く
+    host: true,
+    open: false, // サンドボックス環境では外部ブラウザを開かない
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
