@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "gen:api": "npm --prefix server run tsoa && yarn --cwd client gen:types",
-    "dev": "npm run gen:api && concurrently -n client,server -c blue,green \"yarn --cwd client dev\" \"npm --prefix server run dev\"",
+    "ensure:deps": "([ -x client/node_modules/.bin/vite ] || yarn --cwd client install) && ([ -d server/node_modules ] || npm --prefix server install)",
+    "predev": "npm run ensure:deps",
+    "dev": "concurrently -k -n client,server -c blue,green \"yarn --cwd client dev\" \"(npm run gen:api && npm --prefix server run dev) || true\"",
     "dev:client": "yarn --cwd client dev",
     "dev:server": "npm --prefix server run dev"
   },
