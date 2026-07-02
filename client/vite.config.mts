@@ -11,7 +11,8 @@ const dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(file
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: Number(process.env.DEV_PORT) || 5173,
+    port: Number(process.env.DEV_PORT) || 3000,
+    strictPort: false,
     host: true,
     open: false, // サンドボックス環境では外部ブラウザを開かない
     allowedHosts: true, // v0プレビュー等の外部ホストからのアクセスを許可
