@@ -31,6 +31,8 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAccountAuthList, useAccountAuthMutations } from '../hooks/useAccountAuth'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
+import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
+import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
 // 一覧に出すカラム（non_sync/操作 は別途レンダリング）
@@ -61,6 +63,27 @@ export default function AccountAuthTable() {
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // 差分プレビュー（マスタ/差分ファイル取り込み。書き込みなし）
+  const [diff, setDiff] = useState<ImportDiff | null>(null)
+  const [diffOpen, setDiffOpen] = useState(false)
+  const previewFileRef = useRef<HTMLInputElement>(null)
+
+  const handlePreviewFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const records = await parseAccountAuthExcel(file)
+      if (records.length === 0) { setToast({ msg: '取り込める行がありませんでした', severity: 'error' }); return }
+      const result = await previewImport(records)
+      setDiff(result)
+      setDiffOpen(true)
+    } catch (err) {
+      setToast({ msg: (err as Error).message ?? '差分計算に失敗しました', severity: 'error' })
+    } finally {
+      if (previewFileRef.current) previewFileRef.current.value = ''
+    }
+  }
 
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
   const openEdit = (row: AccountAuth) => { setEditTarget(row); setDialogOpen(true) }
@@ -118,6 +141,10 @@ export default function AccountAuthTable() {
           Excel取り込み
         </Button>
         <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={handleExcel} />
+        <Button variant="outlined" color="secondary" startIcon={<UploadFileIcon />} onClick={() => previewFileRef.current?.click()}>
+          差分プレビュー取込
+        </Button>
+        <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
@@ -166,6 +193,8 @@ export default function AccountAuthTable() {
         onSuccess={handleSuccess}
         submitting={create.isPending || update.isPending}
       />
+
+      <ImportDiffDialog open={diffOpen} diff={diff} onClose={() => setDiffOpen(false)} />
 
       <Snackbar
         open={Boolean(toast)}

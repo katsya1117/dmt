@@ -40,7 +40,38 @@ export function resetAccountAuthMock() {
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 const visible = () => rows.filter((r) => !r.delfg)
 
+const IMPORT_FIELDS = [
+  'username', 'password', 'comment', 'number', 'submission_date', 'regist_date',
+  'company_cd', 'company_name', 'company_store_cd', 'company_store_branch_num',
+  'non_sync', 'store_cd', 'store_name', 'delfg',
+] as (keyof AccountAuthInput)[]
+
 export const accountAuthHandlers = [
+  // 差分プレビュー（書き込みなし）。サーバーの diff ロジックと同等
+  http.post('/api/account-auth/import/preview', async ({ request }) => {
+    await delay(150)
+    const body = (await request.json()) as { records?: AccountAuthInput[] }
+    const records = body.records ?? []
+    const map = new Map(visible().length >= 0 ? rows.map((r) => [r.username, r] as const) : [])
+    const added: AccountAuthInput[] = []
+    const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
+    const deleted: { username: string }[] = []
+    const restored: { username: string }[] = []
+    let unchangedCount = 0
+    for (const r of records) {
+      const cur = map.get(r.username)
+      if (!cur) { added.push(r); continue }
+      if (r.delfg && !cur.delfg) { deleted.push({ username: r.username }); continue }
+      if (!r.delfg && cur.delfg) { restored.push({ username: r.username }); continue }
+      const changedFields = IMPORT_FIELDS.filter(
+        (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
+      )
+      if (changedFields.length) changed.push({ username: r.username, before: cur, after: r, changedFields })
+      else unchangedCount++
+    }
+    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount })
+  }),
+
   http.get('/api/account-auth', async () => {
     await delay(150)
     return HttpResponse.json(visible())

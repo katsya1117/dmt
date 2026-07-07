@@ -63,6 +63,12 @@ export function listAccountAuth(): AccountAuth[] {
   return rows.map(toApi)
 }
 
+// 差分計算用：論理削除(delfg=1)も含めた全件（リストア判定に必要）
+export function listAllAccountAuth(): AccountAuth[] {
+  const rows = db.prepare('SELECT * FROM account_auth ORDER BY id').all() as Row[]
+  return rows.map(toApi)
+}
+
 export function createAccountAuth(records: AccountAuthInput[]): { inserted: number } {
   const stmt = db.prepare(`
     INSERT INTO account_auth
