@@ -57,17 +57,20 @@ const COL_SPAN = TEXT_COLS.length + 2 // + 診断対象外 + 操作
 
 export default function AccountAuthTable() {
   const { data, isLoading, error } = useAccountAuthList()
-  const { create, update } = useAccountAuthMutations() // remove は削除機能未開放のため不使用
+  const { create, update, applyImportDiff } = useAccountAuthMutations() // remove は削除機能未開放のため不使用
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
 
-  // 差分プレビュー（マスタ/差分ファイル取り込み。書き込みなし）
+  // 差分プレビュー（マスタ/差分ファイル取り込み。プレビューは書き込みなし）
   const [diff, setDiff] = useState<ImportDiff | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
+  const [pendingRecords, setPendingRecords] = useState<AccountAuthInput[] | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
+
+  // マスタ全件など大量の変更を誤って流し込む事故を防ぐための確認閾値
+  const APPLY_CONFIRM_THRESHOLD = 50
 
   const handlePreviewFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -77,12 +80,30 @@ export default function AccountAuthTable() {
       if (records.length === 0) { setToast({ msg: '取り込める行がありませんでした', severity: 'error' }); return }
       const result = await previewImport(records)
       setDiff(result)
+      setPendingRecords(records)
       setDiffOpen(true)
     } catch (err) {
       setToast({ msg: (err as Error).message ?? '差分計算に失敗しました', severity: 'error' })
     } finally {
       if (previewFileRef.current) previewFileRef.current.value = ''
     }
+  }
+
+  const handleApply = () => {
+    if (!pendingRecords || !diff) return
+    const changeCount = diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length
+    if (changeCount >= APPLY_CONFIRM_THRESHOLD) {
+      if (!confirm(`${changeCount}件の変更を適用します。よろしいですか？`)) return
+    }
+    applyImportDiff.mutate(pendingRecords, {
+      onSuccess: (r) => {
+        setDiffOpen(false)
+        setDiff(null)
+        setPendingRecords(null)
+        setToast({ msg: `適用しました（追加${r.inserted}・変更${r.updated}・削除${r.deleted}・リストア${r.restored}）`, severity: 'success' })
+      },
+      onError: (err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }),
+    })
   }
 
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
@@ -114,35 +135,14 @@ export default function AccountAuthTable() {
   //   })
   // }
 
-  const handleExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const records = await parseAccountAuthExcel(file)
-      if (records.length === 0) { setToast({ msg: '取り込める行がありませんでした', severity: 'error' }); return }
-      create.mutate(records, {
-        onSuccess: (r) => setToast({ msg: `${r.inserted}件を取り込みました`, severity: 'success' }),
-        onError: (err) => setToast({ msg: (err as Error).message, severity: 'error' }),
-      })
-    } catch {
-      setToast({ msg: 'Excelの読み込みに失敗しました', severity: 'error' })
-    } finally {
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h1" gutterBottom>アカウント認証テーブル</Typography>
 
       <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
         <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
-        <Button variant="outlined" startIcon={<UploadFileIcon />} onClick={() => fileRef.current?.click()}>
-          Excel取り込み
-        </Button>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={handleExcel} />
-        <Button variant="outlined" color="secondary" startIcon={<UploadFileIcon />} onClick={() => previewFileRef.current?.click()}>
-          差分プレビュー取込
+        <Button variant="outlined" startIcon={<UploadFileIcon />} onClick={() => previewFileRef.current?.click()}>
+          Excel取り込み（差分プレビュー）
         </Button>
         <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
       </Stack>
@@ -194,7 +194,13 @@ export default function AccountAuthTable() {
         submitting={create.isPending || update.isPending}
       />
 
-      <ImportDiffDialog open={diffOpen} diff={diff} onClose={() => setDiffOpen(false)} />
+      <ImportDiffDialog
+        open={diffOpen}
+        diff={diff}
+        onClose={() => setDiffOpen(false)}
+        onApply={handleApply}
+        applying={applyImportDiff.isPending}
+      />
 
       <Snackbar
         open={Boolean(toast)}

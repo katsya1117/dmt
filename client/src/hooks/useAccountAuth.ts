@@ -16,6 +16,7 @@ import {
   deleteAccountAuth,
   type AccountAuthInput,
 } from '../api/accountAuth'
+import { applyImport } from '../api/accountAuthImport'
 
 // このデータを識別するキャッシュキー。invalidate でこのキーを無効化する
 const KEY = ['account-auth']
@@ -40,6 +41,10 @@ export function useAccountAuthMutations() {
     mutationFn: (id: number) => deleteAccountAuth(id),
     onSuccess: invalidate,
   })
+  const applyImportDiff = useMutation({
+    mutationFn: (records: AccountAuthInput[]) => applyImport(records),
+    onSuccess: invalidate,
+  })
 
-  return { create, update, remove }
+  return { create, update, remove, applyImportDiff }
 }

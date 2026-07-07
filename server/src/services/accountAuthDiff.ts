@@ -63,3 +63,18 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
 
   return diff
 }
+
+// 適用前検証：壊れた行・ファイル内重複・必須欠けを弾く（安全ルール#5）
+export function validateImportRecords(records: AccountAuthInput[]): string[] {
+  const errors: string[] = []
+  const seen = new Set<string>()
+  records.forEach((r, i) => {
+    if (!r.username) errors.push(`${i + 1}行目：usernameが空です`)
+    if (!r.password) errors.push(`${i + 1}行目：passwordが空です`)
+    if (r.username) {
+      if (seen.has(r.username)) errors.push(`ファイル内でusernameが重複しています: ${r.username}`)
+      seen.add(r.username)
+    }
+  })
+  return errors
+}

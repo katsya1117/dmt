@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/account-auth/import/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description 差分を承認後に適用。DBを再読込し差分を再計算してから反映する（プレビュー後のDB変化に追従） */
+        post: operations["Apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account-auth": {
         parameters: {
             query?: never;
@@ -119,6 +136,20 @@ export interface components {
         PreviewBody: {
             records: components["schemas"]["AccountAuthInput"][];
         };
+        ApplyImportResult: {
+            /** Format: double */
+            inserted: number;
+            /** Format: double */
+            updated: number;
+            /** Format: double */
+            deleted: number;
+            /** Format: double */
+            restored: number;
+        };
+        ImportErrorResponse: {
+            error: string;
+            errors?: string[];
+        };
         ErrorResponse: {
             error: string;
         };
@@ -154,6 +185,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportDiff"];
+                };
+            };
+        };
+    };
+    Apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewBody"];
+            };
+        };
+        responses: {
+            /** @description Ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyImportResult"] | components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
                 };
             };
         };

@@ -16,7 +16,8 @@ type Props = {
   open: boolean
   diff: ImportDiff | null
   onClose: () => void
-  // apply は次段階。今は差分を見るだけ（書き込みなし）
+  onApply: () => void
+  applying: boolean
 }
 
 function Section({ title, count, color, children }: { title: string; count: number; color: 'success' | 'info' | 'error' | 'warning'; children?: import('react').ReactNode }) {
@@ -31,7 +32,8 @@ function Section({ title, count, color, children }: { title: string; count: numb
   )
 }
 
-export function ImportDiffDialog({ open, diff, onClose }: Props) {
+export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
+  const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
       <DialogTitle>取り込みプレビュー（差分の確認）</DialogTitle>
@@ -70,8 +72,10 @@ export function ImportDiffDialog({ open, diff, onClose }: Props) {
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>閉じる</Button>
-        <Button variant="contained" disabled title="適用は次段階で実装予定">この内容で適用（次段階）</Button>
+        <Button onClick={onClose} disabled={applying}>閉じる</Button>
+        <Button variant="contained" onClick={onApply} disabled={!hasChanges || applying}>
+          {applying ? '適用中…' : 'この内容で適用'}
+        </Button>
       </DialogActions>
     </Dialog>
   )

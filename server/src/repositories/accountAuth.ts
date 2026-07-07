@@ -114,3 +114,72 @@ export function deleteAccountAuth(id: number): { deleted: number } {
     .run(nowStr(), id)
   return { deleted: info.changes }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Excel取り込み適用（apply）専用。username一致で判定する。
+// updateAccountAuth と違い delfg=0 を前提にしない
+// （論理削除済みの行をリストアで復活させる必要があるため）。
+// ─────────────────────────────────────────────────────────────
+
+function upsertAccountAuthByUsername(input: AccountAuthInput): void {
+  const ts = nowStr()
+  const existing = db.prepare('SELECT id FROM account_auth WHERE username = ?').get(input.username) as { id: number } | undefined
+  if (existing) {
+    db.prepare(`
+      UPDATE account_auth SET
+        password = @password, comment = @comment, number = @number,
+        submission_date = @submission_date, regist_date = @regist_date,
+        company_cd = @company_cd, company_name = @company_name,
+        company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
+        non_sync = @non_sync, store_cd = @store_cd, store_name = @store_name,
+        delfg = @delfg, upd_date = @upd_date
+      WHERE id = @id
+    `).run({ ...input, id: existing.id, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, upd_date: ts })
+  } else {
+    db.prepare(`
+      INSERT INTO account_auth
+        (username, password, comment, number, submission_date, regist_date,
+         company_cd, company_name, company_store_cd, company_store_branch_num,
+         non_sync, store_cd, store_name, reg_date, upd_date, delfg)
+      VALUES
+        (@username, @password, @comment, @number, @submission_date, @regist_date,
+         @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
+         @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
+    `).run({ ...input, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, reg_date: ts, upd_date: ts })
+  }
+}
+
+function setDelfgByUsername(username: string, delfg: boolean): void {
+  db.prepare('UPDATE account_auth SET delfg = ?, upd_date = ? WHERE username = ?').run(delfg ? 1 : 0, nowStr(), username)
+}
+
+export interface ApplyImportParams {
+  added: AccountAuthInput[]
+  changed: { after: AccountAuthInput }[]
+  deleted: { username: string }[]
+  restored: { username: string }[]
+}
+
+export interface ApplyImportResult {
+  inserted: number
+  updated: number
+  deleted: number
+  restored: number
+}
+
+// 承認された差分だけを1トランザクションで反映する。ファイルにある行だけ触る（安全）
+export function applyAccountAuthImport(params: ApplyImportParams): ApplyImportResult {
+  const tx = db.transaction(() => {
+    for (const a of params.added) upsertAccountAuthByUsername(a)
+    for (const c of params.changed) upsertAccountAuthByUsername(c.after)
+    for (const d of params.deleted) setDelfgByUsername(d.username, true)
+    for (const r of params.restored) setDelfgByUsername(r.username, false)
+  })
+  tx()
+  return {
+    inserted: params.added.length,
+    updated: params.changed.length,
+    deleted: params.deleted.length,
+    restored: params.restored.length,
+  }
+}

@@ -5,6 +5,7 @@ import type { AccountAuthInput } from './accountAuth'
 // 差分の型はサーバーのtsoaコントローラ由来（OpenAPIから自動生成）
 export type ImportDiff = components['schemas']['ImportDiff']
 export type ChangedRow = components['schemas']['ChangedRow']
+export type ApplyImportResult = components['schemas']['ApplyImportResult']
 
 // 認証に関わる（事故ると客がログインできなくなる）項目。UIで強調する
 export const AUTH_CRITICAL_FIELDS = ['username', 'password', 'delfg']
@@ -19,6 +20,20 @@ export async function previewImport(records: AccountAuthInput[]): Promise<Import
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(res.status, body, (body.message ?? body.error ?? `差分計算に失敗しました (${res.status})`) as string)
+  }
+  return res.json()
+}
+
+// 差分を承認後に適用。サーバー側でDBを再読込→差分を再計算してから反映する
+export async function applyImport(records: AccountAuthInput[]): Promise<ApplyImportResult> {
+  const res = await fetch('/api/account-auth/import/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ records }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, body, (body.message ?? body.error ?? `適用に失敗しました (${res.status})`) as string)
   }
   return res.json()
 }

@@ -72,6 +72,36 @@ export const accountAuthHandlers = [
     return HttpResponse.json({ added, changed, deleted, restored, unchangedCount })
   }),
 
+  // 適用（承認後）。preview と同じ突合ロジックで反映する
+  http.post('/api/account-auth/import/apply', async ({ request }) => {
+    await delay(150)
+    const body = (await request.json()) as { records?: AccountAuthInput[] }
+    const records = body.records ?? []
+    const map = new Map(rows.map((r) => [r.username, r] as const))
+    let inserted = 0
+    let updated = 0
+    let deleted = 0
+    let restored = 0
+    for (const r of records) {
+      const cur = map.get(r.username)
+      if (!cur) {
+        rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
+        inserted++
+        continue
+      }
+      if (r.delfg && !cur.delfg) { cur.delfg = true; cur.upd_date = now(); deleted++; continue }
+      if (!r.delfg && cur.delfg) { cur.delfg = false; cur.upd_date = now(); restored++; continue }
+      const changedFields = IMPORT_FIELDS.filter(
+        (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
+      )
+      if (changedFields.length) {
+        Object.assign(cur, r, { upd_date: now() })
+        updated++
+      }
+    }
+    return HttpResponse.json({ inserted, updated, deleted, restored })
+  }),
+
   http.get('/api/account-auth', async () => {
     await delay(150)
     return HttpResponse.json(visible())

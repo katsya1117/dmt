@@ -30,5 +30,5 @@ export default meta
 
 type Story = StoryObj<typeof AccountAuthTable>
 
-// 一覧表示・新規追加・編集・削除・Excel取り込みが、MSW上で実際に動く
+// 一覧表示・新規追加・編集・Excel取り込み（差分プレビュー）が、MSW上で実際に動く
 export const Default: Story = {}
