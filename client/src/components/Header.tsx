@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import AppBar from '@mui/material/AppBar'
 import Toolbar from '@mui/material/Toolbar'
 import Button from '@mui/material/Button'
@@ -73,6 +73,22 @@ const NAV: NavCategory[] = [
 function NavDropdown({ category }: { category: NavCategory }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null)
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // このカテゴリ配下の画面を開いているかどうか
+  const isActive = category.items
+    ? category.items.some((item) => location.pathname === item.to)
+    : location.pathname === category.to
+
+  // 現在地カテゴリ/ホバー時の共通スタイル
+  const navButtonSx = {
+    fontSize: '0.8125rem',
+    color: isActive ? 'text.primary' : 'text.secondary',
+    fontWeight: isActive ? 600 : 500,
+    borderRadius: 1,
+    px: 1.25,
+    '&:hover': { backgroundColor: 'action.hover' },
+  } as const
 
   // 子メニューを持たない親は直接遷移するボタン
   if (!category.items) {
@@ -80,7 +96,7 @@ function NavDropdown({ category }: { category: NavCategory }) {
       <Button
         color="inherit"
         onClick={() => category.to && navigate(category.to)}
-        sx={{ fontSize: '0.8125rem' }}
+        sx={navButtonSx}
       >
         {category.label}
       </Button>
@@ -92,7 +108,7 @@ function NavDropdown({ category }: { category: NavCategory }) {
       <Button
         color="inherit"
         onMouseEnter={(e) => setAnchor(e.currentTarget)}
-        sx={{ fontSize: '0.8125rem' }}
+        sx={navButtonSx}
       >
         {category.label}
       </Button>
@@ -119,9 +135,12 @@ function NavDropdown({ category }: { category: NavCategory }) {
 
 export default function Header() {
   return (
-    <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
-      <Toolbar variant="dense" sx={{ gap: 1 }}>
-        <Typography variant="body2" sx={{ mr: 2, whiteSpace: 'nowrap', fontWeight: 700, color: 'primary.main' }}>
+    <AppBar position="static" color="default" elevation={0} sx={{ backgroundColor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider' }}>
+      <Toolbar variant="dense" sx={{ gap: 0.5 }}>
+        <Typography
+          variant="body2"
+          sx={{ mr: 2, whiteSpace: 'nowrap', fontWeight: 700, color: 'text.primary', letterSpacing: '0.01em' }}
+        >
           マニュアルメンテナンスツール
         </Typography>
         {NAV.map((cat) => (

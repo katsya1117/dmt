@@ -2,13 +2,19 @@ import { createTheme } from '@mui/material/styles'
 
 const theme = createTheme({
   palette: {
+    // MUI感の強い鮮やかな青はやめ、near-blackを主役にした中立的な配色にする。
+    // 青は「情報/リンク」のアクセントとしてinfoに退避。
     primary: {
-      main: '#2563eb',      // Tailwind blue-600
-      light: '#3b82f6',
-      dark: '#1d4ed8',
+      main: '#1e293b',      // Tailwind slate-800（near-black）
+      light: '#334155',     // slate-700
+      dark: '#0f172a',      // slate-900
+      contrastText: '#ffffff',
     },
     secondary: {
       main: '#64748b',      // Tailwind slate-500
+    },
+    info: {
+      main: '#2563eb',      // Tailwind blue-600（リンク等のアクセント専用）
     },
     background: {
       default: '#f8fafc',   // Tailwind slate-50
@@ -22,17 +28,22 @@ const theme = createTheme({
   },
 
   typography: {
+    // 欧文/数字=Inter、和文=Noto Sans JP。読めない環境用にsystem fontをfallback。
     fontFamily: [
+      '"Inter"',
+      '"Noto Sans JP"',
       '-apple-system',
       'BlinkMacSystemFont',
       '"Hiragino Sans"',
       '"Hiragino Kaku Gothic ProN"',
-      '"Noto Sans JP"',
       'sans-serif',
     ].join(','),
     fontSize: 14,
-    h1: { fontSize: '1.25rem', fontWeight: 700 },
-    h2: { fontSize: '1.125rem', fontWeight: 600 },
+    // 数字を等幅に揃え、字面を少し締める（内部ツールの可読性向上）
+    body1: { fontFeatureSettings: '"tnum"' },
+    body2: { fontFeatureSettings: '"tnum"' },
+    h1: { fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.01em' },
+    h2: { fontSize: '1.125rem', fontWeight: 600, letterSpacing: '-0.01em' },
     h3: { fontSize: '1rem', fontWeight: 600 },
   },
 
@@ -69,6 +80,12 @@ const theme = createTheme({
   ],
 
   components: {
+    // リップル（波紋アニメ）はMUIらしさの最大要因の一つ。全体で無効化する。
+    MuiButtonBase: {
+      defaultProps: {
+        disableRipple: true,
+      },
+    },
     MuiButton: {
       defaultProps: {
         disableElevation: true,  // ボタンの影をなくす
@@ -77,6 +94,11 @@ const theme = createTheme({
         root: {
           textTransform: 'none', // 大文字変換をなくす
           fontWeight: 500,
+          borderRadius: 6,
+        },
+        // アウトラインボタンは枠線を細く・落ち着いた色に
+        outlined: {
+          borderColor: '#cbd5e1', // slate-300
         },
       },
     },
@@ -108,6 +130,37 @@ const theme = createTheme({
     MuiChip: {
       defaultProps: {
         size: 'small',
+      },
+      styleOverrides: {
+        // 丸すぎる（pill）とMUIバッジ感が強いので角丸を控えめに
+        root: {
+          borderRadius: 4,
+          fontWeight: 500,
+        },
+      },
+    },
+    // 入力欄の角丸を揃える
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+        },
+      },
+    },
+    // AppBarのグラデ/影を排除（フラットに）
+    MuiAppBar: {
+      defaultProps: {
+        elevation: 0,
+        color: 'default',
+      },
+    },
+    // ツールチップは黒箱すぎるMUI標準を少し落ち着かせる
+    MuiTooltip: {
+      styleOverrides: {
+        tooltip: {
+          backgroundColor: '#1e293b',
+          fontSize: '0.75rem',
+        },
       },
     },
   },
