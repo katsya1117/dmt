@@ -28,10 +28,10 @@ const theme = createTheme({
   },
 
   typography: {
-    // 欧文/数字=Inter、和文=Noto Sans JP。読めない環境用にsystem fontをfallback。
+    // 欧文/数字=Inter、和文=Zen Kaku Gothic New。読めない環境用にsystem fontをfallback。
     fontFamily: [
       '"Inter"',
-      '"Noto Sans JP"',
+      '"Zen Kaku Gothic New"',
       '-apple-system',
       'BlinkMacSystemFont',
       '"Hiragino Sans"',
