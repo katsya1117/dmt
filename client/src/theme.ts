@@ -28,17 +28,22 @@ const theme = createTheme({
   },
 
   typography: {
+    // 欧文/数字=Inter、和文=Noto Sans JP。読めない環境用にsystem fontをfallback。
     fontFamily: [
+      '"Inter"',
+      '"Noto Sans JP"',
       '-apple-system',
       'BlinkMacSystemFont',
       '"Hiragino Sans"',
       '"Hiragino Kaku Gothic ProN"',
-      '"Noto Sans JP"',
       'sans-serif',
     ].join(','),
     fontSize: 14,
-    h1: { fontSize: '1.25rem', fontWeight: 700 },
-    h2: { fontSize: '1.125rem', fontWeight: 600 },
+    // 数字を等幅に揃え、字面を少し締める（内部ツールの可読性向上）
+    body1: { fontFeatureSettings: '"tnum"' },
+    body2: { fontFeatureSettings: '"tnum"' },
+    h1: { fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.01em' },
+    h2: { fontSize: '1.125rem', fontWeight: 600, letterSpacing: '-0.01em' },
     h3: { fontSize: '1rem', fontWeight: 600 },
   },
 
