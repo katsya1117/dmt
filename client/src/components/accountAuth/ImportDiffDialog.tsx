@@ -4,72 +4,113 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
-import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableHead from '@mui/material/TableHead'
+import TableBody from '@mui/material/TableBody'
+import TableRow from '@mui/material/TableRow'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
-import Divider from '@mui/material/Divider'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import { AUTH_CRITICAL_FIELDS } from '../../api/accountAuthImport'
+import type { AccountAuthInput } from '../../api/accountAuth'
 
 type Props = {
   open: boolean
   diff: ImportDiff | null
+  records: AccountAuthInput[] // 取り込んだファイルの生レコード（削除/リストア行の表示値の復元用）
   onClose: () => void
   onApply: () => void
   applying: boolean
 }
 
-function Section({ title, count, color, children }: { title: string; count: number; color: 'success' | 'info' | 'error' | 'warning'; children?: import('react').ReactNode }) {
-  return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-        <Chip label={count} color={color} size="small" />
-        <Typography variant="subtitle2">{title}</Typography>
-      </Box>
-      {count > 0 && <Box sx={{ pl: 1 }}>{children}</Box>}
-    </Box>
-  )
+type Kind = '追加' | '変更' | '削除' | 'リストア'
+
+const KIND_COLOR: Record<Kind, 'success' | 'info' | 'error' | 'warning'> = {
+  追加: 'success', 変更: 'info', 削除: 'error', リストア: 'warning',
 }
 
-export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
+// 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く）
+const COLS: { key: keyof AccountAuthInput; label: string }[] = [
+  { key: 'username', label: 'ユーザー名' },
+  { key: 'password', label: 'パスワード' },
+  { key: 'number', label: 'No.' },
+  { key: 'submission_date', label: '申込日' },
+  { key: 'regist_date', label: '登録日' },
+  { key: 'company_cd', label: '販社CD' },
+  { key: 'company_name', label: '販売会社' },
+  { key: 'company_store_cd', label: '販売会社店舗CD' },
+  { key: 'company_store_branch_num', label: '枝番' },
+  { key: 'store_cd', label: '販売店CD' },
+  { key: 'store_name', label: '販売店名' },
+  { key: 'comment', label: '備考' },
+]
+
+export function ImportDiffDialog({ open, diff, records, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
+
+  // username -> ファイル内の生レコード（削除/リストア行は diff に username しか無いため引く）
+  const byUsername = new Map(records.map((r) => [r.username, r] as const))
+
+  type Row = { kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
+  const rows: Row[] = diff
+    ? [
+        ...diff.added.map((r) => ({ kind: '追加' as const, username: r.username, record: r, changedFields: [] as string[] })),
+        ...diff.changed.map((c) => ({ kind: '変更' as const, username: c.username, record: c.after, changedFields: c.changedFields })),
+        ...diff.deleted.map((d) => ({ kind: '削除' as const, username: d.username, record: byUsername.get(d.username)!, changedFields: [] as string[] })),
+        ...diff.restored.map((d) => ({ kind: 'リストア' as const, username: d.username, record: byUsername.get(d.username)!, changedFields: [] as string[] })),
+      ]
+    : []
+
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth={false} slotProps={{ paper: { sx: { width: '95vw' } } }}>
       <DialogTitle>取り込みプレビュー（差分の確認）</DialogTitle>
       <DialogContent>
         <Alert severity="info" sx={{ mb: 2 }}>
           この画面ではまだDBに書き込みません。内容を確認してください（★の付いた認証系の変更は特に注意）。
         </Alert>
-        {diff && (
-          <Stack spacing={2} divider={<Divider />}>
-            <Section title="追加" count={diff.added.length} color="success">
-              {diff.added.map((a) => <Typography key={a.username} variant="body2">＋ {a.username}</Typography>)}
-            </Section>
-
-            <Section title="変更" count={diff.changed.length} color="info">
-              {diff.changed.map((c) => (
-                <Typography key={c.username} variant="body2">
-                  ● {c.username}：{c.changedFields.map((f) => (
-                    <Box component="span" key={f} sx={{ mr: 1, color: AUTH_CRITICAL_FIELDS.includes(f) ? 'error.main' : 'text.primary', fontWeight: AUTH_CRITICAL_FIELDS.includes(f) ? 700 : 400 }}>
-                      {AUTH_CRITICAL_FIELDS.includes(f) ? `★${f}` : f}
-                    </Box>
-                  ))}
-                </Typography>
+        <TableContainer component={Paper} sx={{ maxHeight: '60vh' }}>
+          <Table size="small" stickyHeader sx={{ whiteSpace: 'nowrap' }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>区分</TableCell>
+                {COLS.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.length === 0 && (
+                <TableRow><TableCell colSpan={COLS.length + 1}>変更はありません</TableCell></TableRow>
+              )}
+              {rows.map((row) => (
+                <TableRow key={`${row.kind}-${row.username}`} hover>
+                  <TableCell><Chip size="small" label={row.kind} color={KIND_COLOR[row.kind]} /></TableCell>
+                  {COLS.map((c) => {
+                    const v = row.record[c.key]
+                    const isChanged = row.changedFields.includes(c.key)
+                    const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
+                    return (
+                      <TableCell
+                        key={c.key}
+                        sx={{
+                          fontWeight: isChanged ? 700 : 400,
+                          color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
+                        }}
+                      >
+                        {isCritical && '★'}{v === null || v === undefined || v === '' ? '—' : String(v)}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
               ))}
-            </Section>
-
-            <Section title="削除（論理）" count={diff.deleted.length} color="error">
-              {diff.deleted.map((d) => <Typography key={d.username} variant="body2">－ {d.username}</Typography>)}
-            </Section>
-
-            <Section title="リストア" count={diff.restored.length} color="warning">
-              {diff.restored.map((d) => <Typography key={d.username} variant="body2">↩ {d.username}</Typography>)}
-            </Section>
-
-            <Typography variant="caption" color="text.secondary">変更なし：{diff.unchangedCount} 件（表示しません）</Typography>
-          </Stack>
-        )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          変更なし：{diff?.unchangedCount ?? 0} 件（表示しません）
+        </Typography>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={applying}>閉じる</Button>

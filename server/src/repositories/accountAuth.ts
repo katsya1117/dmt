@@ -99,8 +99,9 @@ export function updateAccountAuth(id: number, input: AccountAuthInput): AccountA
       company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
       non_sync = @non_sync, store_cd = @store_cd, store_name = @store_name,
       delfg = @delfg, upd_date = @upd_date
-    WHERE id = @id AND delfg = 0
+    WHERE id = @id
   `).run({ ...input, id, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, upd_date: nowStr() })
+  // delfg=0 を条件にしない：削除済み行の delfg を戻す（手動リストア）もこの関数で行うため
 
   // 更新後の行を返す。delfg=1（論理削除）にした直後でも返せるよう delfg 条件は付けない
   const row = db.prepare('SELECT * FROM account_auth WHERE id = ?').get(id) as Row | undefined

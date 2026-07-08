@@ -23,8 +23,9 @@ async function fail(res: Response, fallback: string): Promise<never> {
   throw new ApiError(res.status, body, message)
 }
 
-export async function fetchAccountAuthList(): Promise<AccountAuth[]> {
-  const res = await fetch('/api/account-auth')
+// includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用）
+export async function fetchAccountAuthList(includeDeleted = false): Promise<AccountAuth[]> {
+  const res = await fetch(`/api/account-auth${includeDeleted ? '?includeDeleted=true' : ''}`)
   if (!res.ok) return fail(res, 'アカウント認証一覧の取得に失敗しました')
   return res.json()
 }

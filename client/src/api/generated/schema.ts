@@ -45,7 +45,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description 一覧取得 */
+        /** @description 一覧取得。includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用） */
         get: operations["List"];
         put?: never;
         /** @description 追加（1件もExcel複数件も同じ口） */
@@ -224,7 +224,9 @@ export interface operations {
     };
     List: {
         parameters: {
-            query?: never;
+            query?: {
+                includeDeleted?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;

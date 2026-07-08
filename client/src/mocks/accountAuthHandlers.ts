@@ -102,9 +102,10 @@ export const accountAuthHandlers = [
     return HttpResponse.json({ inserted, updated, deleted, restored })
   }),
 
-  http.get('/api/account-auth', async () => {
+  http.get('/api/account-auth', async ({ request }) => {
     await delay(150)
-    return HttpResponse.json(visible())
+    const includeDeleted = new URL(request.url).searchParams.get('includeDeleted') === 'true'
+    return HttpResponse.json(includeDeleted ? rows : visible())
   }),
 
   http.post('/api/account-auth', async ({ request }) => {
@@ -129,7 +130,7 @@ export const accountAuthHandlers = [
     await delay(150)
     const id = Number(params.id)
     const input = (await request.json()) as AccountAuthInput
-    const idx = rows.findIndex((x) => x.id === id && !x.delfg)
+    const idx = rows.findIndex((x) => x.id === id)
     if (idx === -1) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
     rows[idx] = { ...rows[idx], ...input, id, upd_date: now() }
     return HttpResponse.json(rows[idx])

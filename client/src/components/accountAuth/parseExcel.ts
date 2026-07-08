@@ -16,7 +16,13 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
   '診断データ対象外': 'non_sync', non_sync: 'non_sync',
   '販売店CD': 'store_cd', store_cd: 'store_cd',
   '販売店名': 'store_name', store_name: 'store_name',
+  '削除フラグ': 'delfg', delfg: 'delfg',
 }
+
+// 客先支給の台帳には0/1の削除フラグ列が無く、「解約日」列に日付が入っている行が
+// 削除（論理削除）扱い（客先側では行を赤塗りして運用している）。この列に値があれば
+// 削除フラグ列の有無に関わらず delfg=true とする
+const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
 function cellToString(value: unknown): string {
   if (value == null) return ''
@@ -43,9 +49,12 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
   if (!ws) return []
 
   const colToField: Record<number, keyof AccountAuthInput> = {}
+  let cancelDateCol: number | null = null
   ws.getRow(1).eachCell((cell, col) => {
-    const field = HEADER_MAP[cellToString(cell.value).trim()]
+    const header = cellToString(cell.value).trim()
+    const field = HEADER_MAP[header]
     if (field) colToField[col] = field
+    if (CANCEL_DATE_HEADERS.includes(header)) cancelDateCol = col
   })
 
   const result: AccountAuthInput[] = []
@@ -55,6 +64,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
     for (const [colStr, field] of Object.entries(colToField)) {
       raw[field] = row.getCell(Number(colStr)).value
     }
+    const hasCancelDate = cancelDateCol != null && cellToString(row.getCell(cancelDateCol).value).trim() !== ''
     const orNull = (k: keyof AccountAuthInput): string | null => {
       const s = cellToString(raw[k]).trim()
       return s === '' ? null : s
@@ -74,7 +84,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       non_sync: toBool(raw.non_sync),
       store_cd: orNull('store_cd'),
       store_name: orNull('store_name'),
-      delfg: false, // Excel取り込みの新規は未削除
+      delfg: toBool(raw.delfg) || hasCancelDate, // 「削除フラグ」列 or 「解約日」列に値があれば削除扱い
     }
     if (record.username || record.password) result.push(record) // 空行を除外
   })

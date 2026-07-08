@@ -13,6 +13,7 @@ import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
 import Table from '@mui/material/Table'
 import TableHead from '@mui/material/TableHead'
 import TableBody from '@mui/material/TableBody'
@@ -53,10 +54,12 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string }[] = [
   { key: 'reg_date', label: '登録日時' },
   { key: 'upd_date', label: '更新日時' },
 ]
-const COL_SPAN = TEXT_COLS.length + 2 // + 診断対象外 + 操作
+const COL_SPAN = TEXT_COLS.length + 3 // + 診断対象外 + 状態 + 操作
 
 export default function AccountAuthTable() {
-  const { data, isLoading, error } = useAccountAuthList()
+  // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
+  // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
+  const { data, isLoading, error } = useAccountAuthList(true)
   const { create, update, applyImportDiff } = useAccountAuthMutations() // remove は削除機能未開放のため不使用
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -68,6 +71,14 @@ export default function AccountAuthTable() {
   const [diffOpen, setDiffOpen] = useState(false)
   const [pendingRecords, setPendingRecords] = useState<AccountAuthInput[] | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
+
+  // No./ユーザー名の入力のたびにテーブルを絞り込む（onChangeで即時フィルタ）
+  const [searchText, setSearchText] = useState('')
+  const filteredData = data?.filter((row) => {
+    const q = searchText.trim().toLowerCase()
+    if (!q) return true
+    return String(row.number ?? '').includes(q) || row.username.toLowerCase().includes(q)
+  })
 
   // マスタ全件など大量の変更を誤って流し込む事故を防ぐための確認閾値
   const APPLY_CONFIRM_THRESHOLD = 50
@@ -145,6 +156,14 @@ export default function AccountAuthTable() {
           Excel取り込み（差分プレビュー）
         </Button>
         <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
+        <TextField
+          size="small"
+          sx={{ width: 260 }}
+          label="No./ユーザー名で絞り込み"
+          placeholder="例: 1001"
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+        />
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
@@ -155,6 +174,7 @@ export default function AccountAuthTable() {
             <TableRow>
               {TEXT_COLS.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
               <TableCell>診断対象外</TableCell>
+              <TableCell>状態</TableCell>
               <TableCell align="right">操作</TableCell>
             </TableRow>
           </TableHead>
@@ -165,14 +185,22 @@ export default function AccountAuthTable() {
             {!isLoading && data?.length === 0 && (
               <TableRow><TableCell colSpan={COL_SPAN}>データがありません</TableCell></TableRow>
             )}
-            {data?.map((row) => (
-              <TableRow key={row.id} hover>
+            {!isLoading && data && data.length > 0 && filteredData?.length === 0 && (
+              <TableRow><TableCell colSpan={COL_SPAN}>該当する行がありません</TableCell></TableRow>
+            )}
+            {filteredData?.map((row) => (
+              <TableRow key={row.id} hover sx={row.delfg ? { opacity: 0.6 } : undefined}>
                 {TEXT_COLS.map((c) => {
                   const v = row[c.key]
                   return <TableCell key={c.key}>{v === null || v === undefined ? '—' : String(v)}</TableCell>
                 })}
                 <TableCell>
                   <Chip label={row.non_sync ? '対象外' : '通常'} color={row.non_sync ? 'warning' : 'default'} size="small" />
+                </TableCell>
+                <TableCell>
+                  {row.delfg
+                    ? <Chip label="削除済み" color="error" size="small" />
+                    : <Chip label="有効" color="success" variant="outlined" size="small" />}
                 </TableCell>
                 <TableCell align="right">
                   <IconButton size="small" onClick={() => openEdit(row)} aria-label="編集"><EditIcon fontSize="small" /></IconButton>
@@ -197,6 +225,7 @@ export default function AccountAuthTable() {
       <ImportDiffDialog
         open={diffOpen}
         diff={diff}
+        records={pendingRecords ?? []}
         onClose={() => setDiffOpen(false)}
         onApply={handleApply}
         applying={applyImportDiff.isPending}

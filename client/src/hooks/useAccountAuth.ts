@@ -21,8 +21,11 @@ import { applyImport } from '../api/accountAuthImport'
 // このデータを識別するキャッシュキー。invalidate でこのキーを無効化する
 const KEY = ['account-auth']
 
-export function useAccountAuthList() {
-  return useQuery({ queryKey: KEY, queryFn: fetchAccountAuthList })
+export function useAccountAuthList(includeDeleted = false) {
+  return useQuery({
+    queryKey: [...KEY, { includeDeleted }],
+    queryFn: () => fetchAccountAuthList(includeDeleted),
+  })
 }
 
 export function useAccountAuthMutations() {
