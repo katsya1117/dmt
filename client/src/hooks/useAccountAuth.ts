@@ -45,7 +45,7 @@ export function useAccountAuthMutations() {
     onSuccess: invalidate,
   })
   const applyImportDiff = useMutation({
-    mutationFn: (records: AccountAuthInput[]) => applyImport(records),
+    mutationFn: (file: File) => applyImport(file),
     onSuccess: invalidate,
   })
 

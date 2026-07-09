@@ -21,7 +21,6 @@ import type { AccountAuthInput } from '../../api/accountAuth'
 type Props = {
   open: boolean
   diff: ImportDiff | null
-  records: AccountAuthInput[] // 取り込んだファイルの生レコード（削除/リストア行の表示値の復元用）
   onClose: () => void
   onApply: () => void
   applying: boolean
@@ -49,19 +48,16 @@ const COLS: { key: keyof AccountAuthInput; label: string }[] = [
   { key: 'comment', label: '備考' },
 ]
 
-export function ImportDiffDialog({ open, diff, records, onClose, onApply, applying }: Props) {
+export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
-
-  // username -> ファイル内の生レコード（削除/リストア行は diff に username しか無いため引く）
-  const byUsername = new Map(records.map((r) => [r.username, r] as const))
 
   type Row = { kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
   const rows: Row[] = diff
     ? [
         ...diff.added.map((r) => ({ kind: '追加' as const, username: r.username, record: r, changedFields: [] as string[] })),
         ...diff.changed.map((c) => ({ kind: '変更' as const, username: c.username, record: c.after, changedFields: c.changedFields })),
-        ...diff.deleted.map((d) => ({ kind: '削除' as const, username: d.username, record: byUsername.get(d.username)!, changedFields: [] as string[] })),
-        ...diff.restored.map((d) => ({ kind: 'リストア' as const, username: d.username, record: byUsername.get(d.username)!, changedFields: [] as string[] })),
+        ...diff.deleted.map((r) => ({ kind: '削除' as const, username: r.username, record: r, changedFields: [] as string[] })),
+        ...diff.restored.map((r) => ({ kind: 'リストア' as const, username: r.username, record: r, changedFields: [] as string[] })),
       ]
     : []
 

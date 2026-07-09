@@ -16,8 +16,8 @@ export interface ChangedRow {
 export interface ImportDiff {
   added: AccountAuthInput[]
   changed: ChangedRow[]
-  deleted: { username: string }[]
-  restored: { username: string }[]
+  deleted: AccountAuthInput[] // ファイル側の行そのもの（プレビュー表示用に全項目を持つ）
+  restored: AccountAuthInput[]
   unchangedCount: number
 }
 
@@ -45,11 +45,11 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
     }
     // 削除／リストアは delfg の遷移で判定
     if (r.delfg && !cur.delfg) {
-      diff.deleted.push({ username: r.username })
+      diff.deleted.push(r)
       continue
     }
     if (!r.delfg && cur.delfg) {
-      diff.restored.push({ username: r.username })
+      diff.restored.push(r)
       continue
     }
     // それ以外は項目の差分

@@ -124,17 +124,10 @@ export interface components {
         ImportDiff: {
             added: components["schemas"]["AccountAuthInput"][];
             changed: components["schemas"]["ChangedRow"][];
-            deleted: {
-                username: string;
-            }[];
-            restored: {
-                username: string;
-            }[];
+            deleted: components["schemas"]["AccountAuthInput"][];
+            restored: components["schemas"]["AccountAuthInput"][];
             /** Format: double */
             unchangedCount: number;
-        };
-        PreviewBody: {
-            records: components["schemas"]["AccountAuthInput"][];
         };
         ApplyImportResult: {
             /** Format: double */
@@ -174,7 +167,10 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PreviewBody"];
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
             };
         };
         responses: {
@@ -198,7 +194,10 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PreviewBody"];
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
             };
         };
         responses: {

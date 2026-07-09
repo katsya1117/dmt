@@ -5,6 +5,10 @@
 // └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
+// 本番の取り込みはサーバー側ストリーミングパースに一本化した（parseAccountAuthExcelStream.ts
+// 参照）が、MSWはブラウザのfetchを横取りするだけで実サーバーは立たないため、
+// モック内ではこのクライアント側パーサーを使ってファイルをレコードに変換する
+import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
 
 const ts = '2026-07-01 09:00:00'
 
@@ -46,23 +50,30 @@ const IMPORT_FIELDS = [
   'non_sync', 'store_cd', 'store_name', 'delfg',
 ] as (keyof AccountAuthInput)[]
 
+// アップロードされたFormDataから 'file' を取り出しレコード配列に変換する
+async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
+  const formData = await request.formData()
+  const file = formData.get('file')
+  if (!(file instanceof File)) return []
+  return parseAccountAuthExcel(file)
+}
+
 export const accountAuthHandlers = [
   // 差分プレビュー（書き込みなし）。サーバーの diff ロジックと同等
   http.post('/api/account-auth/import/preview', async ({ request }) => {
     await delay(150)
-    const body = (await request.json()) as { records?: AccountAuthInput[] }
-    const records = body.records ?? []
-    const map = new Map(visible().length >= 0 ? rows.map((r) => [r.username, r] as const) : [])
+    const records = await extractRecords(request)
+    const map = new Map(rows.map((r) => [r.username, r] as const))
     const added: AccountAuthInput[] = []
     const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
-    const deleted: { username: string }[] = []
-    const restored: { username: string }[] = []
+    const deleted: AccountAuthInput[] = []
+    const restored: AccountAuthInput[] = []
     let unchangedCount = 0
     for (const r of records) {
       const cur = map.get(r.username)
       if (!cur) { added.push(r); continue }
-      if (r.delfg && !cur.delfg) { deleted.push({ username: r.username }); continue }
-      if (!r.delfg && cur.delfg) { restored.push({ username: r.username }); continue }
+      if (r.delfg && !cur.delfg) { deleted.push(r); continue }
+      if (!r.delfg && cur.delfg) { restored.push(r); continue }
       const changedFields = IMPORT_FIELDS.filter(
         (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
       )
@@ -75,8 +86,7 @@ export const accountAuthHandlers = [
   // 適用（承認後）。preview と同じ突合ロジックで反映する
   http.post('/api/account-auth/import/apply', async ({ request }) => {
     await delay(150)
-    const body = (await request.json()) as { records?: AccountAuthInput[] }
-    const records = body.records ?? []
+    const records = await extractRecords(request)
     const map = new Map(rows.map((r) => [r.username, r] as const))
     let inserted = 0
     let updated = 0

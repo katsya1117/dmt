@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
+import multer from 'multer'
 import swaggerUi from 'swagger-ui-express'
 import { ValidateError } from 'tsoa'
 import katashikiRouter from './routes/katashiki'
@@ -13,7 +14,9 @@ import { config } from './config'
 const app = express()
 
 app.use(cors({ origin: 'http://localhost:5173' }))
-app.use(express.json())
+// Excel取り込み（マスタ全件2万行規模）はJSONペイロードが数MBになるため、
+// デフォルト上限(100kb)では即413/500になる。余裕を持って50mbに引き上げる
+app.use(express.json({ limit: '50mb' }))
 
 // ── 手書きルート（順次tsoaへ移行予定）──
 app.use('/api/katashiki', katashikiRouter)
@@ -23,7 +26,9 @@ app.use('/api/master', masterRouter)
 
 // ── tsoa生成ルート（account-auth 他）──
 // コントローラ(src/controllers)から `tsoa spec-and-routes` で生成。
-RegisterRoutes(app)
+// Excel取り込み（マスタ全件2万行規模）のファイルアップロードに対応するため
+// multerの上限を50mbに引き上げる（tsoa.jsonのmulterOpts指定は非推奨のためここで渡す）
+RegisterRoutes(app, { multer: multer({ limits: { fileSize: 50 * 1024 * 1024 } }) })
 
 // ── Swagger UI（APIドキュメント・対話的テスト）──
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument))
@@ -36,7 +41,11 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction): void =
     return
   }
   if (err instanceof Error) {
-    res.status(500).json({ message: 'サーバーエラー' })
+    console.error(err) // 原因不明の500を無言で握りつぶさない
+    const status = (err as { status?: number; statusCode?: number }).status
+      ?? (err as { statusCode?: number }).statusCode
+      ?? 500
+    res.status(status).json({ message: status === 413 ? 'アップロードデータが大きすぎます' : 'サーバーエラー' })
     return
   }
   next(err)

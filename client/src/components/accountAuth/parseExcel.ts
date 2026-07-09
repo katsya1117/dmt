@@ -1,6 +1,22 @@
 import ExcelJS from 'exceljs'
 import type { AccountAuthInput } from '../../api/accountAuth'
 
+// ─────────────────────────────────────────────────────────────
+// 【本番の取り込みフローでは使われていません】
+// 2026-07-10計測：20000行規模のExcelをこの関数でパースすると、ブラウザの
+// メインスレッドが約10.7秒ブロックされることを実測で確認した。そのため
+// 実運用のパースはサーバー側ストリーミング（server/src/services/
+// parseAccountAuthExcelStream.ts）に一本化し、AccountAuthTable.tsx から
+// この関数は呼ばなくなった。
+//
+// このファイルを消さずに残しているのは、client/src/mocks/accountAuthHandlers.ts
+// （Storybook/vitestのMSWモック）が引き続きこれを使ってファイルをパースして
+// いるため（MSWはfetchを横取りするだけで実Expressサーバーを起動しないので、
+// サーバー側の実装を呼べない）。変換ルール（ヘッダー対応・解約日列の扱い等）を
+// 変更する際は、こちらとサーバー側の parseAccountAuthExcelStream.ts の
+// 両方を直すこと。
+// ─────────────────────────────────────────────────────────────
+
 // Excelのヘッダー名（日本語/英語どちらでも）→ フィールドの対応
 const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
   'ユーザー名': 'username', username: 'username',

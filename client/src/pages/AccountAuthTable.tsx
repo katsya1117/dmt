@@ -31,7 +31,6 @@ import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAccountAuthList, useAccountAuthMutations } from '../hooks/useAccountAuth'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
-import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
@@ -67,9 +66,11 @@ export default function AccountAuthTable() {
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
 
   // 差分プレビュー（マスタ/差分ファイル取り込み。プレビューは書き込みなし）
+  // パースはサーバー側で行う（ファイルをそのままアップロード）。理由は
+  // components/accountAuth/parseExcel.ts の冒頭コメントを参照
   const [diff, setDiff] = useState<ImportDiff | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
-  const [pendingRecords, setPendingRecords] = useState<AccountAuthInput[] | null>(null)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
 
   // No./ユーザー名の入力のたびにテーブルを絞り込む（onChangeで即時フィルタ）
@@ -87,11 +88,9 @@ export default function AccountAuthTable() {
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const records = await parseAccountAuthExcel(file)
-      if (records.length === 0) { setToast({ msg: '取り込める行がありませんでした', severity: 'error' }); return }
-      const result = await previewImport(records)
+      const result = await previewImport(file)
       setDiff(result)
-      setPendingRecords(records)
+      setPendingFile(file)
       setDiffOpen(true)
     } catch (err) {
       setToast({ msg: (err as Error).message ?? '差分計算に失敗しました', severity: 'error' })
@@ -101,16 +100,16 @@ export default function AccountAuthTable() {
   }
 
   const handleApply = () => {
-    if (!pendingRecords || !diff) return
+    if (!pendingFile || !diff) return
     const changeCount = diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length
     if (changeCount >= APPLY_CONFIRM_THRESHOLD) {
       if (!confirm(`${changeCount}件の変更を適用します。よろしいですか？`)) return
     }
-    applyImportDiff.mutate(pendingRecords, {
+    applyImportDiff.mutate(pendingFile, {
       onSuccess: (r) => {
         setDiffOpen(false)
         setDiff(null)
-        setPendingRecords(null)
+        setPendingFile(null)
         setToast({ msg: `適用しました（追加${r.inserted}・変更${r.updated}・削除${r.deleted}・リストア${r.restored}）`, severity: 'success' })
       },
       onError: (err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }),
@@ -225,7 +224,6 @@ export default function AccountAuthTable() {
       <ImportDiffDialog
         open={diffOpen}
         diff={diff}
-        records={pendingRecords ?? []}
         onClose={() => setDiffOpen(false)}
         onApply={handleApply}
         applying={applyImportDiff.isPending}
