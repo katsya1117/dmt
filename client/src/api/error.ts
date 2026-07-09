@@ -1,3 +1,5 @@
+import { isAxiosError } from 'axios'
+
 // サーバーが返したエラーを、ステータス・ボディ込みで運ぶための型。
 // 画面側はこれを見て「フォーム項目の下に赤字」か「全体トースト」かを判断する。
 export class ApiError extends Error {
@@ -9,6 +11,17 @@ export class ApiError extends Error {
     this.status = status
     this.body = body
   }
+}
+
+// axiosの失敗（非2xx）を ApiError に変換する。api/*.ts の catch はこれを使う
+export function toApiError(err: unknown, fallback: string): ApiError {
+  if (isAxiosError(err)) {
+    const status = err.response?.status ?? 0
+    const body = (err.response?.data ?? {}) as { error?: string; message?: string }
+    const message = body.error ?? body.message ?? `${fallback} (${status})`
+    return new ApiError(status, body, message)
+  }
+  return new ApiError(0, {}, fallback)
 }
 
 // tsoaの422バリデーションエラーのボディ形

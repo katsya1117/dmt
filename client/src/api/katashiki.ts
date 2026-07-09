@@ -1,19 +1,29 @@
+import { http, axiosStatusOf } from './http'
 import type { Katashiki, KatashikiFile, UploadResult } from './types'
 
 export async function fetchKatashikiList(): Promise<Katashiki[]> {
-  const res = await fetch('/api/katashiki')
-  if (!res.ok) throw new Error(`型式一覧の取得に失敗しました (${res.status})`)
-  return res.json()
+  try {
+    const res = await http.get<Katashiki[]>('/api/katashiki')
+    return res.data
+  } catch (err) {
+    throw new Error(`型式一覧の取得に失敗しました (${axiosStatusOf(err)})`)
+  }
 }
 
 export async function fetchKatashikiFiles(id: string): Promise<KatashikiFile[]> {
-  const res = await fetch(`/api/katashiki/${id}/files`)
-  if (!res.ok) throw new Error(`ファイル一覧の取得に失敗しました (${res.status})`)
-  return res.json()
+  try {
+    const res = await http.get<KatashikiFile[]>(`/api/katashiki/${id}/files`)
+    return res.data
+  } catch (err) {
+    throw new Error(`ファイル一覧の取得に失敗しました (${axiosStatusOf(err)})`)
+  }
 }
 
 export async function uploadKatashiki(id: string): Promise<UploadResult> {
-  const res = await fetch(`/api/upload/${id}`, { method: 'POST' })
-  if (!res.ok) throw new Error(`アップロードに失敗しました (${res.status})`)
-  return res.json()
+  try {
+    const res = await http.post<UploadResult>(`/api/upload/${id}`)
+    return res.data
+  } catch (err) {
+    throw new Error(`アップロードに失敗しました (${axiosStatusOf(err)})`)
+  }
 }

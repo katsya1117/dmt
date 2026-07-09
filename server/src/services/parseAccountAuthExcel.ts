@@ -1,22 +1,28 @@
 import ExcelJS from 'exceljs'
-import type { AccountAuthInput } from '../../api/accountAuth'
+import type { AccountAuthInput } from '../repositories/accountAuth'
 
 // ─────────────────────────────────────────────────────────────
-// 【本番の取り込みフローでは使われていません】
-// 2026-07-10計測：20000行規模のExcelをこの関数でパースすると、ブラウザの
-// メインスレッドが約10.7秒ブロックされることを実測で確認した。そのため
-// 実運用のパースはサーバー側（server/src/services/parseAccountAuthExcel.ts）
-// に一本化し、AccountAuthTable.tsx からこの関数は呼ばなくなった。
+// Excel取り込みのパース（サーバー側）。
+// クライアント側 parseAccountAuthExcel（client/src/components/accountAuth/
+// parseExcel.ts）と同じ変換ルールをサーバー側に移植したもの。
+// 2026-07-10計測：20000行をクライアント側(exceljs Workbook.xlsx.load)で
+// パースするとブラウザのメインスレッドが約10.7秒ブロックされたため、
+// マスタ全件(2万行規模)を扱う本番導線はこちらに一本化した。
+// クライアント側の parseExcel.ts はテスト/Storybookのモックからは
+// 引き続き使われている（実運用のパースはここに一本化）。
 //
-// このファイルを消さずに残しているのは、client/src/mocks/accountAuthHandlers.ts
-// （Storybook/vitestのMSWモック）が引き続きこれを使ってファイルをパースして
-// いるため（MSWはfetchを横取りするだけで実Expressサーバーを起動しないので、
-// サーバー側の実装を呼べない）。変換ルール（ヘッダー対応・解約日列の扱い等）を
-// 変更する際は、こちらとサーバー側の parseAccountAuthExcel.ts の
-// 両方を直すこと。
+// 【ストリーミングAPIは不採用】当初 ExcelJS.stream.xlsx.WorkbookReader
+// （1行ずつのストリーム読み）で実装したが、同一バイト列のファイルでも
+// 再現性のある形で "Cannot read properties of undefined (reading 'sheets')"
+// で落ちる現象を確認した（workbook.xmlの解析がworksheetエントリの処理より
+// 後に完了するケースがあるexceljs側の既知の不安定さと見られる。一時ファイル
+// 経由に変えても再現した）。目的は「ブラウザを固まらせない」ことであり、
+// サーバー側でNodeのイベントループを数百ms〜1秒止めること自体は、この
+// 内部ツール（同時に取り込み操作をするのは実質1人）では許容範囲と判断し、
+// 安定している非ストリーミングAPI（Workbook.xlsx.load、フルパース）を採用。
+// 実測：20000行で478ms。
 // ─────────────────────────────────────────────────────────────
 
-// Excelのヘッダー名（日本語/英語どちらでも）→ フィールドの対応
 const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
   'ユーザー名': 'username', username: 'username',
   'パスワード': 'password', password: 'password',
@@ -55,11 +61,13 @@ function toBool(v: unknown): boolean {
   return ['1', 'true', 'TRUE', '対象外', '○', 'yes', 'Y'].includes(s)
 }
 
-/** .xlsx ファイルを読み、AccountAuthInput[] に変換する */
-export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInput[]> {
-  const buf = await file.arrayBuffer()
+/** アップロードされたxlsxバッファをパースし、AccountAuthInput[] に変換する */
+export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<AccountAuthInput[]> {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(buf)
+  // exceljsの型定義が古いBuffer型を想定しており@types/nodeのBuffer<ArrayBufferLike>と
+  // 噛み合わない（実行時は問題ない型のみのミスマッチ）。anyを介して逃がす
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await wb.xlsx.load(buffer as any)
   const ws = wb.worksheets[0]
   if (!ws) return []
 
@@ -72,7 +80,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
     if (CANCEL_DATE_HEADERS.includes(header)) cancelDateCol = col
   })
 
-  const result: AccountAuthInput[] = []
+  const records: AccountAuthInput[] = []
   ws.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
     const raw: Partial<Record<keyof AccountAuthInput, unknown>> = {}
@@ -99,10 +107,10 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       non_sync: toBool(raw.non_sync),
       store_cd: orNull('store_cd'),
       store_name: orNull('store_name'),
-      delfg: toBool(raw.delfg) || hasCancelDate, // 「削除フラグ」列 or 「解約日」列に値があれば削除扱い
+      delfg: toBool(raw.delfg) || hasCancelDate,
     }
-    if (record.username || record.password) result.push(record) // 空行を除外
+    if (record.username || record.password) records.push(record) // 空行を除外
   })
 
-  return result
+  return records
 }

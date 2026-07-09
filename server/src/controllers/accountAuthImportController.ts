@@ -5,7 +5,7 @@ import {
   type ApplyImportResult,
 } from '../repositories/accountAuth'
 import { computeImportDiff, validateImportRecords, type ImportDiff } from '../services/accountAuthDiff'
-import { parseAccountAuthExcelStream } from '../services/parseAccountAuthExcelStream'
+import { parseAccountAuthExcelBuffer } from '../services/parseAccountAuthExcel'
 
 interface ImportErrorResponse {
   error: string
@@ -27,7 +27,7 @@ export class AccountAuthImportController extends Controller {
   /** 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する */
   @Post('preview')
   public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff> {
-    const records = await parseAccountAuthExcelStream(file.buffer)
+    const records = await parseAccountAuthExcelBuffer(file.buffer)
     const current = listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
     return computeImportDiff(records, current)
   }
@@ -36,7 +36,7 @@ export class AccountAuthImportController extends Controller {
   @Post('apply')
   @Response<ImportErrorResponse>(400, '検証エラー')
   public async apply(@UploadedFile() file: Express.Multer.File): Promise<ApplyImportResult | ImportErrorResponse> {
-    const records = await parseAccountAuthExcelStream(file.buffer)
+    const records = await parseAccountAuthExcelBuffer(file.buffer)
     const errors = validateImportRecords(records)
     if (errors.length > 0) {
       this.setStatus(400)

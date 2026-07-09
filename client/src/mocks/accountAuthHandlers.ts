@@ -5,9 +5,10 @@
 // └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
-// 本番の取り込みはサーバー側ストリーミングパースに一本化した（parseAccountAuthExcelStream.ts
-// 参照）が、MSWはブラウザのfetchを横取りするだけで実サーバーは立たないため、
-// モック内ではこのクライアント側パーサーを使ってファイルをレコードに変換する
+// 本番の取り込みはサーバー側パースに一本化した（server/src/services/
+// parseAccountAuthExcel.ts 参照）が、MSWはブラウザのfetch/axiosを横取り
+// するだけで実サーバーは立たないため、モック内ではこのクライアント側
+// パーサーを使ってファイルをレコードに変換する
 import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
 
 const ts = '2026-07-01 09:00:00'
