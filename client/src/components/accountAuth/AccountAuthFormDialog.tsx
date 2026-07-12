@@ -157,7 +157,7 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
               <Controller name="delfg" control={control} render={({ field }) => (
                 <FormControlLabel
                   control={<Switch color="error" checked={field.value} onChange={(e) => field.onChange(e.target.checked)} />}
-                  label="削除フラグ（ONで論理削除。保存すると一覧から消えます）"
+                  label="削除フラグ（ONで論理削除。一覧には残り「状態」列が削除済みになります）"
                 />
               )} />
             </Grid>

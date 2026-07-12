@@ -28,7 +28,7 @@ export type AccountAuth = {
   delfg: boolean
 }
 
-// 書き込み型（サーバー管理 id/reg_date/upd_date/delfg を除く。読み取りと対称）
+// 書き込み型（サーバー管理 id/reg_date/upd_date を除く。読み取りと対称。delfgはユーザーが手動編集するため含む）
 export type AccountAuthInput = {
   username: string
   password: string
