@@ -119,6 +119,11 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           変更なし：{diff?.unchangedCount ?? 0} 件（表示しません）
         </Typography>
+        {!!diff?.skippedDuplicateUsernames.length && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            以下のユーザー名はDB内で既に重複登録されているため（客先の旧運用によるもの）、Excel取り込みでは一切変更しません（{diff.skippedDuplicateUsernames.length}件）: {diff.skippedDuplicateUsernames.join('、')}
+          </Alert>
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={applying}>閉じる</Button>

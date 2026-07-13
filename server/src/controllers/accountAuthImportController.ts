@@ -37,12 +37,12 @@ export class AccountAuthImportController extends Controller {
   @Response<ImportErrorResponse>(400, '検証エラー')
   public async apply(@UploadedFile() file: Express.Multer.File): Promise<ApplyImportResult | ImportErrorResponse> {
     const records = await parseAccountAuthExcelBuffer(file.buffer)
-    const errors = validateImportRecords(records)
+    const current = listAllAccountAuth()
+    const errors = validateImportRecords(records, current)
     if (errors.length > 0) {
       this.setStatus(400)
       return { error: '検証エラーがあります', errors }
     }
-    const current = listAllAccountAuth()
     const diff = computeImportDiff(records, current)
     return applyAccountAuthImport({
       added: diff.added,

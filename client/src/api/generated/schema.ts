@@ -128,6 +128,7 @@ export interface components {
             restored: components["schemas"]["AccountAuthInput"][];
             /** Format: double */
             unchangedCount: number;
+            skippedDuplicateUsernames: string[];
         };
         ApplyImportResult: {
             /** Format: double */
