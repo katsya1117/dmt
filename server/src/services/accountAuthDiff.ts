@@ -19,9 +19,30 @@ export interface ImportDiff {
   deleted: AccountAuthInput[] // ファイル側の行そのもの（プレビュー表示用に全項目を持つ）
   restored: AccountAuthInput[]
   unchangedCount: number
-  // 既存DBでusernameが重複しているレガシーデータ。Excel取り込みでは一切触らない
-  // （どのDB行に対応するか一意に決められないため）。2026-07-13追記
+  // 既知のレガシー重複usernameとしてスキップした行（LEGACY_DUPLICATE_NUMBERS参照）
   skippedDuplicateUsernames: string[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// 客先の旧運用で、username重複のまま現役でエンドユーザーに使われている
+// ことが判明している既知のレコード（No.で特定）。これらはExcel取り込みで
+// 追加/変更/削除/リストアいずれの対象にもせず、常に無視する。
+//
+// 【意図的にNo.のハードコードにしている】現在のDBを見て「username重複が
+// あれば自動でレガシー扱い」という動的判定も考えられるが、それだと将来
+// 何らかの理由で意図しない新しい重複が発生した場合もサイレントに見逃して
+// しまう。No.を明示的に列挙する方式なら、本当に把握している既知の問題
+// レコードだけを保護しつつ、それ以外の重複は今まで通り検知・拒否できる。
+//
+// 更新方法：この配列に対象レコードのNo.を追加/削除するだけでよい
+// （2026-07-13時点、実際のNo.は未確定 — 客先に確認の上で埋めること）
+// ─────────────────────────────────────────────────────────────
+const LEGACY_DUPLICATE_NUMBERS: readonly number[] = [
+  // TODO: 客先から実際のNo.を確認して埋める
+]
+
+function isKnownLegacyDuplicate(record: Pick<AccountAuthInput, 'number'>): boolean {
+  return record.number != null && LEGACY_DUPLICATE_NUMBERS.includes(record.number)
 }
 
 // AccountAuthInput の項目名（比較対象）
@@ -34,29 +55,16 @@ const INPUT_FIELDS: (keyof AccountAuthInput)[] = [
 // 認証に関わる（事故ると客がログインできなくなる）項目。UIで強調する
 export const AUTH_CRITICAL_FIELDS = ['username', 'password', 'delfg']
 
-// 現在のDBでusernameが重複している（＝レガシーの重複登録）ものを特定する。
-// 客先の旧運用では、usernameが重複していてもpasswordで区別されていた実績があり、
-// これらの既存データは今も現役のためExcel取り込みでは絶対に触らない。
-// 新規にusernameを重複させることは今後禁止するため、ここでの「重複」は
-// あくまで現在のDBに既に2件以上存在するものだけを指す（新規の重複はここに含まれない）
-function findLegacyDuplicatedUsernames(current: AccountAuth[]): Set<string> {
-  const counts = new Map<string, number>()
-  for (const c of current) counts.set(c.username, (counts.get(c.username) ?? 0) + 1)
-  return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([u]) => u))
-}
-
 export function computeImportDiff(records: AccountAuthInput[], current: AccountAuth[]): ImportDiff {
-  const legacyDuplicated = findLegacyDuplicatedUsernames(current)
   const map = new Map<string, AccountAuth>()
-  for (const c of current) map.set(c.username, c) // 重複時は最後の1件のみ保持（該当usernameは下でスキップするため比較には使わない）
+  for (const c of current) map.set(c.username, c)
 
   const diff: ImportDiff = { added: [], changed: [], deleted: [], restored: [], unchangedCount: 0, skippedDuplicateUsernames: [] }
   const skipped = new Set<string>()
 
   for (const r of records) {
-    if (legacyDuplicated.has(r.username)) {
-      // 既存DBでusernameが重複しているレガシーデータ：追加/変更/削除/リストア
-      // いずれの判定もせず完全にスキップする（どのDB行に対応するか一意に決められない）
+    if (isKnownLegacyDuplicate(r)) {
+      // 既知のレガシー重複：追加/変更/削除/リストアいずれの判定もせず完全にスキップする
       skipped.add(r.username)
       continue
     }
@@ -88,29 +96,20 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
 }
 
 // 適用前検証：壊れた行・ファイル内重複・必須欠けを弾く（安全ルール#5）
-// currentが必要な理由：ファイル内でusernameが重複していても、それが既存DBの
-// レガシー重複と一致するなら許容する（computeImportDiff側で完全スキップされる）。
-// 拒否するのは「今のDBにはまだ無いusername」を新規に重複させようとするケースのみ
-export function validateImportRecords(records: AccountAuthInput[], current: AccountAuth[]): string[] {
+// 既知のレガシー重複（LEGACY_DUPLICATE_NUMBERS）は重複チェックの対象外とする
+// （上のcomputeImportDiffで完全スキップされるため）。それ以外の新規のusername
+// 重複は引き続き拒否する
+export function validateImportRecords(records: AccountAuthInput[]): string[] {
   const errors: string[] = []
-  const legacyDuplicated = findLegacyDuplicatedUsernames(current)
   const seen = new Set<string>()
-  const fileDuplicates = new Set<string>()
-
   records.forEach((r, i) => {
     if (!r.username) errors.push(`${i + 1}行目：usernameが空です`)
     if (!r.password) errors.push(`${i + 1}行目：passwordが空です`)
+    if (isKnownLegacyDuplicate(r)) return
     if (r.username) {
-      if (seen.has(r.username)) fileDuplicates.add(r.username)
+      if (seen.has(r.username)) errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${r.username}`)
       seen.add(r.username)
     }
   })
-
-  for (const u of fileDuplicates) {
-    if (!legacyDuplicated.has(u)) {
-      errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${u}`)
-    }
-  }
-
   return errors
 }

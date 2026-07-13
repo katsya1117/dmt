@@ -59,12 +59,13 @@ async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
   return parseAccountAuthExcel(file)
 }
 
-// 現在のDBでusernameが重複している（レガシー重複登録）ものを特定する。
-// サーバー側 server/src/services/accountAuthDiff.ts の findLegacyDuplicatedUsernames と同等
-function findLegacyDuplicatedUsernames(): Set<string> {
-  const counts = new Map<string, number>()
-  for (const r of rows) counts.set(r.username, (counts.get(r.username) ?? 0) + 1)
-  return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([u]) => u))
+// 客先の旧運用によるusername重複の既知レコード（No.で特定）。
+// サーバー側 server/src/services/accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS と同等
+// （デモなので空のまま。実際のNo.が判明したらサーバー側と合わせて更新する）
+const LEGACY_DUPLICATE_NUMBERS: readonly number[] = []
+
+function isKnownLegacyDuplicate(r: Pick<AccountAuthInput, 'number'>): boolean {
+  return r.number != null && LEGACY_DUPLICATE_NUMBERS.includes(r.number)
 }
 
 export const accountAuthHandlers = [
@@ -72,7 +73,6 @@ export const accountAuthHandlers = [
   http.post('/api/account-auth/import/preview', async ({ request }) => {
     await delay(150)
     const records = await extractRecords(request)
-    const legacyDuplicated = findLegacyDuplicatedUsernames()
     const map = new Map(rows.map((r) => [r.username, r] as const))
     const added: AccountAuthInput[] = []
     const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
@@ -81,7 +81,7 @@ export const accountAuthHandlers = [
     let unchangedCount = 0
     const skippedDuplicateUsernames = new Set<string>()
     for (const r of records) {
-      if (legacyDuplicated.has(r.username)) { skippedDuplicateUsernames.add(r.username); continue }
+      if (isKnownLegacyDuplicate(r)) { skippedDuplicateUsernames.add(r.username); continue }
       const cur = map.get(r.username)
       if (!cur) { added.push(r); continue }
       if (r.delfg && !cur.delfg) { deleted.push(r); continue }
@@ -99,23 +99,19 @@ export const accountAuthHandlers = [
   http.post('/api/account-auth/import/apply', async ({ request }) => {
     await delay(150)
     const records = await extractRecords(request)
-    const legacyDuplicated = findLegacyDuplicatedUsernames()
 
-    // 検証: 必須欠け・ファイル内の「新規」重複（既存DBのレガシー重複と一致しないもの）
+    // 検証: 必須欠け・ファイル内の「新規」重複（既知のレガシー重複と一致しないもの）
     const errors: string[] = []
     const seen = new Set<string>()
-    const fileDuplicates = new Set<string>()
     records.forEach((r, i) => {
       if (!r.username) errors.push(`${i + 1}行目：usernameが空です`)
       if (!r.password) errors.push(`${i + 1}行目：passwordが空です`)
+      if (isKnownLegacyDuplicate(r)) return
       if (r.username) {
-        if (seen.has(r.username)) fileDuplicates.add(r.username)
+        if (seen.has(r.username)) errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${r.username}`)
         seen.add(r.username)
       }
     })
-    for (const u of fileDuplicates) {
-      if (!legacyDuplicated.has(u)) errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${u}`)
-    }
     if (errors.length > 0) {
       return HttpResponse.json({ error: '検証エラーがあります', errors }, { status: 400 })
     }
@@ -126,7 +122,7 @@ export const accountAuthHandlers = [
     let deleted = 0
     let restored = 0
     for (const r of records) {
-      if (legacyDuplicated.has(r.username)) continue // レガシー重複は一切触らない
+      if (isKnownLegacyDuplicate(r)) continue // 既知のレガシー重複は一切触らない
       const cur = map.get(r.username)
       if (!cur) {
         rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
