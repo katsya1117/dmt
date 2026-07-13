@@ -5,7 +5,7 @@
 // │ 役割: 見た目と操作だけに集中する。データ取得・送信は           │
 // │       useAccountAuth* フックに任せ、自分は fetch を一切書かない。│
 // │  - 一覧表示      : useAccountAuthList() の data を並べる        │
-// │  - 追加/更新/削除: useAccountAuthMutations() を呼ぶ            │
+// │  - 追加/更新/削除: useCreateAccountAuth() 等（RTK Query）を呼ぶ │
 // │  - 画面固有の状態(ダイアログ開閉・選択行・トースト)だけ useState│
 // │  - 一覧テーブルは MUI DataGrid（仮想化込み・大量行対応）        │
 // └─────────────────────────────────────────────────────────────┘
@@ -22,7 +22,7 @@ import { DataGrid, GridActionsCellItem, type GridColDef } from '@mui/x-data-grid
 import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
-import { useAccountAuthList, useAccountAuthMutations } from '../hooks/useAccountAuth'
+import { useAccountAuthList, useCreateAccountAuth, useUpdateAccountAuth, useApplyAccountAuthImport } from '../hooks/useAccountAuth'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
@@ -51,7 +51,10 @@ export default function AccountAuthTable() {
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
   // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
   const { data, isLoading, error } = useAccountAuthList(true)
-  const { create, update, applyImportDiff } = useAccountAuthMutations() // remove は削除機能未開放のため不使用
+  const [create, { isLoading: creating }] = useCreateAccountAuth()
+  const [update, { isLoading: updating }] = useUpdateAccountAuth()
+  const [applyImportDiff, { isLoading: applying }] = useApplyAccountAuthImport()
+  // remove は削除機能未開放のため不使用
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
@@ -97,15 +100,14 @@ export default function AccountAuthTable() {
     if (changeCount >= APPLY_CONFIRM_THRESHOLD) {
       if (!confirm(`${changeCount}件の変更を適用します。よろしいですか？`)) return
     }
-    applyImportDiff.mutate(pendingFile, {
-      onSuccess: (r) => {
+    applyImportDiff(pendingFile).unwrap()
+      .then((r) => {
         setDiffOpen(false)
         setDiff(null)
         setPendingFile(null)
         setToast({ msg: `適用しました（追加${r.inserted}・変更${r.updated}・削除${r.deleted}・リストア${r.restored}）`, severity: 'success' })
-      },
-      onError: (err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }),
-    })
+      })
+      .catch((err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }))
   }
 
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
@@ -114,9 +116,9 @@ export default function AccountAuthTable() {
   // 送信はPromiseを返す（失敗はthrowされ、ダイアログがフィールドエラーに紐付ける）
   const handleSubmit = async (input: AccountAuthInput) => {
     if (editTarget) {
-      await update.mutateAsync({ id: editTarget.id, input })
+      await update({ id: editTarget.id, input }).unwrap()
     } else {
-      await create.mutateAsync([input])
+      await create([input]).unwrap()
     }
   }
 
@@ -128,13 +130,13 @@ export default function AccountAuthTable() {
 
   // 【削除機能 未開放】客先DBで物理削除が不調のため。論理削除は編集フォームの
   // delfg スイッチ（PUT）で行う。開放する時はこの関数と一覧の削除ボタン、
-  // 下の useAccountAuthMutations の remove を戻す。
+  // hooks/useAccountAuth.ts の useRemoveAccountAuth を戻す。
+  // const [remove] = useRemoveAccountAuth()
   // const handleDelete = (row: AccountAuth) => {
   //   if (!confirm(`「${row.username}」を削除しますか？`)) return
-  //   remove.mutate(row.id, {
-  //     onSuccess: () => setToast({ msg: '削除しました', severity: 'success' }),
-  //     onError: (e) => setToast({ msg: (e as Error).message, severity: 'error' }),
-  //   })
+  //   remove(row.id).unwrap()
+  //     .then(() => setToast({ msg: '削除しました', severity: 'success' }))
+  //     .catch((e) => setToast({ msg: (e as Error).message, severity: 'error' }))
   // }
 
   const columns: GridColDef<AccountAuth>[] = [
@@ -227,7 +229,7 @@ export default function AccountAuthTable() {
         onClose={() => setDialogOpen(false)}
         onSubmit={handleSubmit}
         onSuccess={handleSuccess}
-        submitting={create.isPending || update.isPending}
+        submitting={creating || updating}
       />
 
       <ImportDiffDialog
@@ -235,7 +237,7 @@ export default function AccountAuthTable() {
         diff={diff}
         onClose={() => setDiffOpen(false)}
         onApply={handleApply}
-        applying={applyImportDiff.isPending}
+        applying={applying}
       />
 
       <Snackbar

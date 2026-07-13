@@ -1,15 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchVehicles, fetchKatashiki } from '../api/master'
+import { masterApi } from '../store/services/masterApi'
 
 export function useVehicles() {
-  return useQuery({ queryKey: ['vehicles'], queryFn: fetchVehicles })
+  return masterApi.useVehiclesQuery()
 }
 
 export function useKatashiki(vehicleId?: string) {
-  return useQuery({
-    queryKey: ['katashiki', vehicleId ?? 'all'],
-    queryFn: () => fetchKatashiki(vehicleId),
-    // 車種未選択のうちは型式を取りに行かない
-    enabled: vehicleId !== undefined ? vehicleId !== '' : true,
+  return masterApi.useKatashikiQuery(vehicleId, {
+    // 車種未選択のうちは型式を取りに行かない（vehicleId===''のときだけskip）
+    skip: vehicleId === '',
   })
 }

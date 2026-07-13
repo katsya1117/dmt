@@ -1,53 +1,24 @@
 // ┌─────────────────────────────────────────────────────────────┐
-// │ レイヤ: フック（サーバー状態の管理 = TanStack Query）          │
-// │ 流れ:  画面 → 【ここ】 → API関数 → HTTP                       │
+// │ レイヤ: フック（サーバー状態の管理 = RTK Query）               │
+// │ 流れ:  画面 → 【ここ】 → store/services/accountAuthApi.ts → API関数 → HTTP│
 // │                                                               │
-// │ 役割: 「取得・キャッシュ・ローディング・再取得」を引き受ける。 │
-// │  - useQuery: 一覧を取得しキャッシュ（queryKey で識別）         │
-// │  - useMutation: 追加/更新/削除。成功したら invalidate して     │
-// │    一覧を自動で取り直す（画面側は再取得を意識しなくてよい）。  │
-// │ 画面はこのフックを呼ぶだけで、データの出入りを気にしない。     │
+// │ 役割: store/services/accountAuthApi.ts が生成したRTK Queryの  │
+// │       フックに、この機能用の名前を付けて再エクスポートするだけ。│
+// │       「取得・キャッシュ・ローディング・再取得」の実体は       │
+// │       accountAuthApi 側（invalidatesTags/providesTagsで       │
+// │       更新後の一覧自動再取得を行う）。                         │
+// │ 呼び方: useCreateAccountAuth() 等は [trigger, result] を返す   │
+// │        RTK Query流。trigger(引数).unwrap() でPromise化できる。 │
 // └─────────────────────────────────────────────────────────────┘
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import {
-  fetchAccountAuthList,
-  createAccountAuth,
-  updateAccountAuth,
-  deleteAccountAuth,
-  type AccountAuthInput,
-} from '../api/accountAuth'
-import { applyImport } from '../api/accountAuthImport'
+import { accountAuthApi } from '../store/services/accountAuthApi'
 
-// このデータを識別するキャッシュキー。invalidate でこのキーを無効化する
-const KEY = ['account-auth']
-
+// includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用）
 export function useAccountAuthList(includeDeleted = false) {
-  return useQuery({
-    queryKey: [...KEY, { includeDeleted }],
-    queryFn: () => fetchAccountAuthList(includeDeleted),
-  })
+  return accountAuthApi.useListQuery(includeDeleted)
 }
 
-export function useAccountAuthMutations() {
-  const qc = useQueryClient()
-  const invalidate = () => qc.invalidateQueries({ queryKey: KEY })
-
-  const create = useMutation({
-    mutationFn: (records: AccountAuthInput[]) => createAccountAuth(records),
-    onSuccess: invalidate,
-  })
-  const update = useMutation({
-    mutationFn: ({ id, input }: { id: number; input: AccountAuthInput }) => updateAccountAuth(id, input),
-    onSuccess: invalidate,
-  })
-  const remove = useMutation({
-    mutationFn: (id: number) => deleteAccountAuth(id),
-    onSuccess: invalidate,
-  })
-  const applyImportDiff = useMutation({
-    mutationFn: (file: File) => applyImport(file),
-    onSuccess: invalidate,
-  })
-
-  return { create, update, remove, applyImportDiff }
-}
+export const useCreateAccountAuth = accountAuthApi.useCreateMutation
+export const useUpdateAccountAuth = accountAuthApi.useUpdateMutation
+export const useApplyAccountAuthImport = accountAuthApi.useApplyImportDiffMutation
+// 【削除機能 未開放】客先DBで物理削除が不調のため。開放する時: accountAuthApi.useRemoveMutation
+// export const useRemoveAccountAuth = accountAuthApi.useRemoveMutation

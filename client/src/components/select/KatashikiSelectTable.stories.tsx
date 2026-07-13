@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Provider as ReduxProvider } from 'react-redux'
+import { createStore } from '../../store'
 import { masterHandlers } from '../../mocks/masterHandlers'
 import { KatashikiSelectTable } from './KatashikiSelectTable'
 import type { Katashiki } from '../../api/master'
@@ -24,10 +25,8 @@ const meta: Meta<typeof Harness> = {
   component: Harness,
   parameters: { msw: { handlers: masterHandlers } },
   decorators: [
-    (Story) => {
-      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      return <QueryClientProvider client={qc}><Story /></QueryClientProvider>
-    },
+    // ストーリーごとに独立したstore（＝RTK Queryキャッシュ）を注入する
+    (Story) => <ReduxProvider store={createStore()}><Story /></ReduxProvider>,
   ],
 }
 export default meta

@@ -3,9 +3,7 @@ import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import Box from '@mui/material/Box'
 import { Provider as ReduxProvider } from 'react-redux'
-import { QueryClientProvider } from '@tanstack/react-query'
 import { store } from './store'
-import { queryClient } from './lib/queryClient'
 import theme from './theme'
 import Header from './components/Header'
 
@@ -51,7 +49,6 @@ import ConnectionSettings from './pages/ConnectionSettings'
 export default function App() {
   return (
     <ReduxProvider store={store}>
-      <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
     <BrowserRouter>
@@ -104,7 +101,6 @@ export default function App() {
       </Box>
     </BrowserRouter>
       </ThemeProvider>
-      </QueryClientProvider>
     </ReduxProvider>
   )
 }

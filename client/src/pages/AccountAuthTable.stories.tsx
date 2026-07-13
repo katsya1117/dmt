@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query'
+import { Provider as ReduxProvider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
+import { createStore } from '../store'
 import { accountAuthHandlers, resetAccountAuthMock } from '../mocks/accountAuthHandlers'
 import AccountAuthTable from './AccountAuthTable'
 
@@ -13,15 +14,14 @@ const meta: Meta<typeof AccountAuthTable> = {
   },
   decorators: [
     (Story) => {
-      // ストーリーごとにモック状態とクエリキャッシュを初期化
+      // ストーリーごとにモック状態とRTK Queryキャッシュ（＝store）を初期化
       resetAccountAuthMock()
-      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
       return (
-        <QueryClientProvider client={queryClient}>
+        <ReduxProvider store={createStore()}>
           <BrowserRouter>
             <Story />
           </BrowserRouter>
-        </QueryClientProvider>
+        </ReduxProvider>
       )
     },
   ],
