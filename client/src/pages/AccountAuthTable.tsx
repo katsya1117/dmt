@@ -205,6 +205,12 @@ export default function AccountAuthTable() {
           getRowClassName={(params) => (params.row.delfg ? 'account-auth-deleted-row' : '')}
           sx={{ '& .account-auth-deleted-row': { opacity: 0.6 } }}
           disableRowSelectionOnClick
+          // 検索は「入力した瞬間に全件見える」設計のため、ページネーションで
+          // 結果が隠れないようデフォルトを「すべて表示」にする（仮想化は
+          // ページサイズと独立して効くため性能は変わらない。公式サポートの
+          // pageSize=-1機能。docs/アカウント認証_Excel取り込み設計.md参照）
+          initialState={{ pagination: { paginationModel: { pageSize: -1 } } }}
+          pageSizeOptions={[25, 50, 100, { value: -1, label: 'すべて' }]}
           slots={{
             noRowsOverlay: () => (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>

@@ -102,6 +102,11 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
             columns={columns}
             density="compact"
             disableRowSelectionOnClick
+            // 承認前レビューなので、ページ送りで見落とすリスクを避けるため
+            // 常に全件を1ページで表示する（仮想化は独立して効くため性能は
+            // 変わらない。詳細は AccountAuthTable.tsx の同種コメント参照）
+            initialState={{ pagination: { paginationModel: { pageSize: -1 } } }}
+            pageSizeOptions={[{ value: -1, label: 'すべて' }]}
             slots={{
               noRowsOverlay: () => (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
