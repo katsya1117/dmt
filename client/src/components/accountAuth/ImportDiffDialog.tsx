@@ -4,16 +4,10 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
 import Box from '@mui/material/Box'
-import Table from '@mui/material/Table'
-import TableHead from '@mui/material/TableHead'
-import TableBody from '@mui/material/TableBody'
-import TableRow from '@mui/material/TableRow'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
+import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import { AUTH_CRITICAL_FIELDS } from '../../api/accountAuthImport'
 import type { AccountAuthInput } from '../../api/accountAuth'
@@ -48,18 +42,52 @@ const COLS: { key: keyof AccountAuthInput; label: string }[] = [
   { key: 'comment', label: '備考' },
 ]
 
+type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
+
 export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
 
-  type Row = { kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
   const rows: Row[] = diff
     ? [
-        ...diff.added.map((r) => ({ kind: '追加' as const, username: r.username, record: r, changedFields: [] as string[] })),
-        ...diff.changed.map((c) => ({ kind: '変更' as const, username: c.username, record: c.after, changedFields: c.changedFields })),
-        ...diff.deleted.map((r) => ({ kind: '削除' as const, username: r.username, record: r, changedFields: [] as string[] })),
-        ...diff.restored.map((r) => ({ kind: 'リストア' as const, username: r.username, record: r, changedFields: [] as string[] })),
+        ...diff.added.map((r): Row => ({ id: `追加-${r.username}`, kind: '追加', username: r.username, record: r, changedFields: [] })),
+        ...diff.changed.map((c): Row => ({ id: `変更-${c.username}`, kind: '変更', username: c.username, record: c.after, changedFields: c.changedFields })),
+        ...diff.deleted.map((r): Row => ({ id: `削除-${r.username}`, kind: '削除', username: r.username, record: r, changedFields: [] })),
+        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: r, changedFields: [] })),
       ]
     : []
+
+  const columns: GridColDef<Row>[] = [
+    {
+      field: 'kind',
+      headerName: '区分',
+      width: 90,
+      sortable: false,
+      renderCell: (params) => <Chip size="small" label={params.row.kind} color={KIND_COLOR[params.row.kind]} />,
+    },
+    ...COLS.map((c): GridColDef<Row> => ({
+      field: c.key,
+      headerName: c.label,
+      width: 140,
+      sortable: false,
+      valueGetter: (_value, row) => row.record[c.key],
+      renderCell: (params) => {
+        const v = params.row.record[c.key]
+        const isChanged = params.row.changedFields.includes(c.key)
+        const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
+        return (
+          <Box
+            component="span"
+            sx={{
+              fontWeight: isChanged ? 700 : 400,
+              color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
+            }}
+          >
+            {isCritical && '★'}{v === null || v === undefined || v === '' ? '—' : String(v)}
+          </Box>
+        )
+      },
+    })),
+  ]
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth={false} slotProps={{ paper: { sx: { width: '95vw' } } }}>
@@ -68,42 +96,21 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         <Alert severity="info" sx={{ mb: 2 }}>
           この画面ではまだDBに書き込みません。内容を確認してください（★の付いた認証系の変更は特に注意）。
         </Alert>
-        <TableContainer component={Paper} sx={{ maxHeight: '60vh' }}>
-          <Table size="small" stickyHeader sx={{ whiteSpace: 'nowrap' }}>
-            <TableHead>
-              <TableRow>
-                <TableCell>区分</TableCell>
-                {COLS.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.length === 0 && (
-                <TableRow><TableCell colSpan={COLS.length + 1}>変更はありません</TableCell></TableRow>
-              )}
-              {rows.map((row) => (
-                <TableRow key={`${row.kind}-${row.username}`} hover>
-                  <TableCell><Chip size="small" label={row.kind} color={KIND_COLOR[row.kind]} /></TableCell>
-                  {COLS.map((c) => {
-                    const v = row.record[c.key]
-                    const isChanged = row.changedFields.includes(c.key)
-                    const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
-                    return (
-                      <TableCell
-                        key={c.key}
-                        sx={{
-                          fontWeight: isChanged ? 700 : 400,
-                          color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
-                        }}
-                      >
-                        {isCritical && '★'}{v === null || v === undefined || v === '' ? '—' : String(v)}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <Box sx={{ height: '60vh' }}>
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            density="compact"
+            disableRowSelectionOnClick
+            slots={{
+              noRowsOverlay: () => (
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                  変更はありません
+                </Box>
+              ),
+            }}
+          />
+        </Box>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           変更なし：{diff?.unchangedCount ?? 0} 件（表示しません）
         </Typography>

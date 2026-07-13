@@ -7,6 +7,7 @@
 // │  - 一覧表示      : useAccountAuthList() の data を並べる        │
 // │  - 追加/更新/削除: useAccountAuthMutations() を呼ぶ            │
 // │  - 画面固有の状態(ダイアログ開閉・選択行・トースト)だけ useState│
+// │  - 一覧テーブルは MUI DataGrid（仮想化込み・大量行対応）        │
 // └─────────────────────────────────────────────────────────────┘
 import { useRef, useState } from 'react'
 import Box from '@mui/material/Box'
@@ -14,19 +15,11 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
-import Table from '@mui/material/Table'
-import TableHead from '@mui/material/TableHead'
-import TableBody from '@mui/material/TableBody'
-import TableRow from '@mui/material/TableRow'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import Paper from '@mui/material/Paper'
 import Chip from '@mui/material/Chip'
-import IconButton from '@mui/material/IconButton'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
+import { DataGrid, GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import EditIcon from '@mui/icons-material/Edit'
-// import DeleteIcon from '@mui/icons-material/Delete' // 削除機能 未開放。開放時に戻す
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAccountAuthList, useAccountAuthMutations } from '../hooks/useAccountAuth'
@@ -35,25 +28,24 @@ import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
-// 一覧に出すカラム（non_sync/操作 は別途レンダリング）
-const TEXT_COLS: { key: keyof AccountAuth; label: string }[] = [
-  { key: 'id', label: 'ID' },
-  { key: 'username', label: 'ユーザー名' },
-  { key: 'password', label: 'パスワード' },
-  { key: 'number', label: 'No.' },
-  { key: 'submission_date', label: '申込日' },
-  { key: 'regist_date', label: '登録日' },
-  { key: 'company_cd', label: '販社CD' },
-  { key: 'company_name', label: '販売会社' },
-  { key: 'company_store_cd', label: '販売会社店舗CD' },
-  { key: 'company_store_branch_num', label: '枝番' },
-  { key: 'store_cd', label: '販売店CD' },
-  { key: 'store_name', label: '販売店名' },
-  { key: 'comment', label: '備考' },
-  { key: 'reg_date', label: '登録日時' },
-  { key: 'upd_date', label: '更新日時' },
+// テキスト列（診断対象外/状態/操作 は別途renderCellで描画）
+const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
+  { key: 'id', label: 'ID', width: 70 },
+  { key: 'username', label: 'ユーザー名', width: 140 },
+  { key: 'password', label: 'パスワード', width: 140 },
+  { key: 'number', label: 'No.', width: 90 },
+  { key: 'submission_date', label: '申込日', width: 110 },
+  { key: 'regist_date', label: '登録日', width: 110 },
+  { key: 'company_cd', label: '販社CD', width: 100 },
+  { key: 'company_name', label: '販売会社', width: 140 },
+  { key: 'company_store_cd', label: '販売会社店舗CD', width: 140 },
+  { key: 'company_store_branch_num', label: '枝番', width: 90 },
+  { key: 'store_cd', label: '販売店CD', width: 100 },
+  { key: 'store_name', label: '販売店名', width: 140 },
+  { key: 'comment', label: '備考', width: 200 },
+  { key: 'reg_date', label: '登録日時', width: 160 },
+  { key: 'upd_date', label: '更新日時', width: 160 },
 ]
-const COL_SPAN = TEXT_COLS.length + 3 // + 診断対象外 + 状態 + 操作
 
 export default function AccountAuthTable() {
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
@@ -145,6 +137,43 @@ export default function AccountAuthTable() {
   //   })
   // }
 
+  const columns: GridColDef<AccountAuth>[] = [
+    ...TEXT_COLS.map((c): GridColDef<AccountAuth> => ({
+      field: c.key,
+      headerName: c.label,
+      width: c.width,
+      valueFormatter: (value) => (value === null || value === undefined ? '—' : value),
+    })),
+    {
+      field: 'non_sync',
+      headerName: '診断対象外',
+      width: 110,
+      sortable: false,
+      renderCell: (params) => (
+        <Chip label={params.row.non_sync ? '対象外' : '通常'} color={params.row.non_sync ? 'warning' : 'default'} size="small" />
+      ),
+    },
+    {
+      field: 'delfg',
+      headerName: '状態',
+      width: 110,
+      sortable: false,
+      renderCell: (params) =>
+        params.row.delfg
+          ? <Chip label="削除済み" color="error" size="small" />
+          : <Chip label="有効" color="success" variant="outlined" size="small" />,
+    },
+    {
+      field: 'actions',
+      type: 'actions',
+      headerName: '操作',
+      width: 80,
+      getActions: (params) => [
+        <GridActionsCellItem key="edit" icon={<EditIcon fontSize="small" />} label="編集" onClick={() => openEdit(params.row)} />,
+      ],
+    },
+  ]
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h1" gutterBottom>アカウント認証テーブル</Typography>
@@ -167,50 +196,24 @@ export default function AccountAuthTable() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      <TableContainer component={Paper} sx={{ maxHeight: '70vh' }}>
-        <Table size="small" stickyHeader sx={{ whiteSpace: 'nowrap' }}>
-          <TableHead>
-            <TableRow>
-              {TEXT_COLS.map((c) => <TableCell key={c.key}>{c.label}</TableCell>)}
-              <TableCell>診断対象外</TableCell>
-              <TableCell>状態</TableCell>
-              <TableCell align="right">操作</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {isLoading && (
-              <TableRow><TableCell colSpan={COL_SPAN}>読み込み中...</TableCell></TableRow>
-            )}
-            {!isLoading && data?.length === 0 && (
-              <TableRow><TableCell colSpan={COL_SPAN}>データがありません</TableCell></TableRow>
-            )}
-            {!isLoading && data && data.length > 0 && filteredData?.length === 0 && (
-              <TableRow><TableCell colSpan={COL_SPAN}>該当する行がありません</TableCell></TableRow>
-            )}
-            {filteredData?.map((row) => (
-              <TableRow key={row.id} hover sx={row.delfg ? { opacity: 0.6 } : undefined}>
-                {TEXT_COLS.map((c) => {
-                  const v = row[c.key]
-                  return <TableCell key={c.key}>{v === null || v === undefined ? '—' : String(v)}</TableCell>
-                })}
-                <TableCell>
-                  <Chip label={row.non_sync ? '対象外' : '通常'} color={row.non_sync ? 'warning' : 'default'} size="small" />
-                </TableCell>
-                <TableCell>
-                  {row.delfg
-                    ? <Chip label="削除済み" color="error" size="small" />
-                    : <Chip label="有効" color="success" variant="outlined" size="small" />}
-                </TableCell>
-                <TableCell align="right">
-                  <IconButton size="small" onClick={() => openEdit(row)} aria-label="編集"><EditIcon fontSize="small" /></IconButton>
-                  {/* 削除機能 未開放（論理削除は編集フォームのdelfgで行う）。開放時に戻す:
-                  <IconButton size="small" onClick={() => handleDelete(row)} aria-label="削除"><DeleteIcon fontSize="small" /></IconButton> */}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <Box sx={{ height: '70vh' }}>
+        <DataGrid
+          rows={filteredData ?? []}
+          columns={columns}
+          loading={isLoading}
+          density="compact"
+          getRowClassName={(params) => (params.row.delfg ? 'account-auth-deleted-row' : '')}
+          sx={{ '& .account-auth-deleted-row': { opacity: 0.6 } }}
+          disableRowSelectionOnClick
+          slots={{
+            noRowsOverlay: () => (
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                {data?.length === 0 ? 'データがありません' : '該当する行がありません'}
+              </Box>
+            ),
+          }}
+        />
+      </Box>
 
       <AccountAuthFormDialog
         open={dialogOpen}
