@@ -45,6 +45,20 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 // 削除フラグ列の有無に関わらず delfg=true とする
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
+// ─────────────────────────────────────────────────────────────
+// 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
+// 表現している箇所がある。exceljsは結合セルの値を範囲内の全セルに複製して
+// 返すため、この注記がusername/passwordとして誤って読み込まれ、実在しない
+// アカウントとして登録されてしまう危険がある（2026-07-14実測で確認）。
+// この番号の行は最初からデータとして取り込まない（No.ハードコード方式。
+// LEGACY_DUPLICATE_NUMBERSと同じ考え方：内容の文字列判定ではなく明示的な
+// リストにすることで、想定外のデータを誤って除外/混入させない）。
+// 2026-07-14時点、実際のNo.は客先確認待ちで空の配列（TODO）
+// ─────────────────────────────────────────────────────────────
+const KESSABAN_NUMBERS: readonly number[] = [
+  // TODO: 客先から実際のNo.を確認して埋める
+]
+
 function cellToString(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toISOString().slice(0, 10)
@@ -109,7 +123,8 @@ export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<Accou
       store_name: orNull('store_name'),
       delfg: toBool(raw.delfg) || hasCancelDate,
     }
-    if (record.username || record.password) records.push(record) // 空行を除外
+    const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
+    if ((record.username || record.password) && !isKessaban) records.push(record) // 空行・欠番注記行を除外
   })
 
   return records
