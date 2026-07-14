@@ -26,8 +26,9 @@ const KIND_COLOR: Record<Kind, 'success' | 'info' | 'error' | 'warning'> = {
   追加: 'success', 変更: 'info', 削除: 'error', リストア: 'warning',
 }
 
-// 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く）
-const COLS: { key: keyof AccountAuthInput; label: string }[] = [
+// 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く。
+// delfgは追加/変更/削除/リストアの「区分」チップで既に表現されているため列は作らない）
+const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) => string }[] = [
   { key: 'username', label: 'ユーザー名' },
   { key: 'password', label: 'パスワード' },
   { key: 'number', label: 'No.' },
@@ -37,6 +38,9 @@ const COLS: { key: keyof AccountAuthInput; label: string }[] = [
   { key: 'company_name', label: '販売会社' },
   { key: 'company_store_cd', label: '販売会社店舗CD' },
   { key: 'company_store_branch_num', label: '枝番' },
+  // 2026-07-14追加：この列が無く、Excel取り込みでnon_syncだけ変わった行が
+  // 「変更」チップは付くのに画面上どこが変わったか分からない状態だった
+  { key: 'non_sync', label: '診断対象外', format: (v) => (v ? '対象外' : '通常') },
   { key: 'store_cd', label: '販売店CD' },
   { key: 'store_name', label: '販売店名' },
   { key: 'comment', label: '備考' },
@@ -51,8 +55,8 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
     ? [
         ...diff.added.map((r): Row => ({ id: `追加-${r.username}`, kind: '追加', username: r.username, record: r, changedFields: [] })),
         ...diff.changed.map((c): Row => ({ id: `変更-${c.username}`, kind: '変更', username: c.username, record: c.after, changedFields: c.changedFields })),
-        ...diff.deleted.map((r): Row => ({ id: `削除-${r.username}`, kind: '削除', username: r.username, record: r, changedFields: [] })),
-        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: r, changedFields: [] })),
+        ...diff.deleted.map((d): Row => ({ id: `削除-${d.username}`, kind: '削除', username: d.username, record: d.after, changedFields: [] })),
+        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: r.after, changedFields: [] })),
       ]
     : []
 
@@ -74,6 +78,7 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         const v = params.row.record[c.key]
         const isChanged = params.row.changedFields.includes(c.key)
         const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
+        const display = c.format ? c.format(v) : (v === null || v === undefined || v === '' ? '—' : String(v))
         return (
           <Box
             component="span"
@@ -82,7 +87,7 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
               color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
             }}
           >
-            {isCritical && '★'}{v === null || v === undefined || v === '' ? '—' : String(v)}
+            {isCritical && '★'}{display}
           </Box>
         )
       },
@@ -121,7 +126,8 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         </Typography>
         {!!diff?.skippedDuplicateUsernames.length && (
           <Alert severity="warning" sx={{ mt: 1 }}>
-            以下のユーザー名はDB内で既に重複登録されているため（客先の旧運用によるもの）、Excel取り込みでは一切変更しません（{diff.skippedDuplicateUsernames.length}件）: {diff.skippedDuplicateUsernames.join('、')}
+            以下は既知の重複登録（客先の旧運用によるもの）ですが、対応するNo.のレコードがDBに見つからなかったため変更していません。データ不整合の可能性があるため確認してください（{diff.skippedDuplicateUsernames.length}件）:{' '}
+            {diff.skippedDuplicateUsernames.map((s) => `${s.username}（No.${s.number ?? '—'}）`).join('、')}
           </Alert>
         )}
       </DialogContent>

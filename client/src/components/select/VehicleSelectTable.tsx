@@ -1,5 +1,5 @@
 import { SelectableTable, type Column } from './SelectableTable'
-import { useVehicles } from '../../hooks/useMaster'
+import { masterApi } from '../../store/services/masterApi'
 import type { Vehicle } from '../../api/master'
 
 const columns: Column<Vehicle>[] = [
@@ -16,7 +16,7 @@ type Props = {
 
 /** 車種一覧の単一選択テーブル。複数画面で共通利用する。 */
 export function VehicleSelectTable({ selectedId, onSelect, rows }: Props) {
-  const query = useVehicles()
+  const query = masterApi.useVehiclesQuery()
   const data = rows ?? query.data ?? []
 
   return (

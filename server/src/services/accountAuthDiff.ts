@@ -13,26 +13,51 @@ export interface ChangedRow {
   changedFields: string[]
 }
 
+export interface DeletedRow {
+  username: string
+  before: AccountAuth // 適用時にidで対象行を特定するため保持
+  after: AccountAuthInput
+}
+
+export interface RestoredRow {
+  username: string
+  before: AccountAuth
+  after: AccountAuthInput
+}
+
+// 既知のレガシー重複としてマークされているが、No.に対応するDB行が見つからず
+// 変更を一切適用しなかった行（通常は空になるはず。データ不整合の兆候）。
+// 【usernameでdedupしない】同じusernameで複数のNo.が未マッチになるケースが
+// あり得るため、usernameだけを集約すると「どのNo.が問題か」が分からなくなる。
+// No.が本来の一意なキーなので、行ごと（username+number）にそのまま持つ
+export interface SkippedRow {
+  username: string
+  number: number | null
+}
+
 export interface ImportDiff {
   added: AccountAuthInput[]
   changed: ChangedRow[]
-  deleted: AccountAuthInput[] // ファイル側の行そのもの（プレビュー表示用に全項目を持つ）
-  restored: AccountAuthInput[]
+  deleted: DeletedRow[]
+  restored: RestoredRow[]
   unchangedCount: number
-  // 既知のレガシー重複usernameとしてスキップした行（LEGACY_DUPLICATE_NUMBERS参照）
-  skippedDuplicateUsernames: string[]
+  skippedDuplicateUsernames: SkippedRow[]
 }
 
 // ─────────────────────────────────────────────────────────────
 // 客先の旧運用で、username重複のまま現役でエンドユーザーに使われている
-// ことが判明している既知のレコード（No.で特定）。これらはExcel取り込みで
-// 追加/変更/削除/リストアいずれの対象にもせず、常に無視する。
+// ことが判明している既知のレコード（No.で特定）。
 //
 // 【意図的にNo.のハードコードにしている】現在のDBを見て「username重複が
 // あれば自動でレガシー扱い」という動的判定も考えられるが、それだと将来
 // 何らかの理由で意図しない新しい重複が発生した場合もサイレントに見逃して
 // しまう。No.を明示的に列挙する方式なら、本当に把握している既知の問題
 // レコードだけを保護しつつ、それ以外の重複は今まで通り検知・拒否できる。
+//
+// 【重要】ここに載っているレコードも、Excel取り込みでusername重複の
+// バリデーション対象外にするだけで、他カラム（備考・住所等）の変更は
+// 通常通り検知・適用される。usernameが重複していてもNo.は一意という
+// 前提のもと、DB行の照合はusernameではなくNo.で行う（下記computeImportDiff参照）。
 //
 // 更新方法：この配列に対象レコードのNo.を追加/削除するだけでよい
 // （2026-07-13時点、実際のNo.は未確定 — 客先に確認の上で埋めること）
@@ -56,33 +81,40 @@ const INPUT_FIELDS: (keyof AccountAuthInput)[] = [
 export const AUTH_CRITICAL_FIELDS = ['username', 'password', 'delfg']
 
 export function computeImportDiff(records: AccountAuthInput[], current: AccountAuth[]): ImportDiff {
-  const map = new Map<string, AccountAuth>()
-  for (const c of current) map.set(c.username, c)
+  const byUsername = new Map<string, AccountAuth>()
+  const byNumber = new Map<number, AccountAuth>()
+  for (const c of current) {
+    byUsername.set(c.username, c)
+    if (c.number != null) byNumber.set(c.number, c)
+  }
 
   const diff: ImportDiff = { added: [], changed: [], deleted: [], restored: [], unchangedCount: 0, skippedDuplicateUsernames: [] }
-  const skipped = new Set<string>()
+  const skipped: SkippedRow[] = []
 
   for (const r of records) {
-    if (isKnownLegacyDuplicate(r)) {
-      // 既知のレガシー重複：追加/変更/削除/リストアいずれの判定もせず完全にスキップする
-      skipped.add(r.username)
-      continue
-    }
-    const cur = map.get(r.username)
+    const legacy = isKnownLegacyDuplicate(r)
+    // 既知のレガシー重複：usernameでは行を一意特定できないため、代わりにNo.で照合する
+    // （No.は一意という前提。見つからなければ安全側で変更せずスキップし警告に残す）
+    const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
+
     if (!cur) {
-      diff.added.push(r)
+      if (legacy) {
+        skipped.push({ username: r.username, number: r.number }) // No.が既存DBに見つからない＝データ不整合。触らず警告のみ
+      } else {
+        diff.added.push(r)
+      }
       continue
     }
     // 削除／リストアは delfg の遷移で判定
     if (r.delfg && !cur.delfg) {
-      diff.deleted.push(r)
+      diff.deleted.push({ username: r.username, before: cur, after: r })
       continue
     }
     if (!r.delfg && cur.delfg) {
-      diff.restored.push(r)
+      diff.restored.push({ username: r.username, before: cur, after: r })
       continue
     }
-    // それ以外は項目の差分
+    // それ以外は項目の差分（レガシー重複行でも同様に検知・適用対象にする）
     const changedFields = INPUT_FIELDS.filter((f) => r[f] !== cur[f])
     if (changedFields.length > 0) {
       diff.changed.push({ username: r.username, before: cur, after: r, changedFields })
@@ -91,14 +123,14 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
     }
   }
 
-  diff.skippedDuplicateUsernames = [...skipped]
+  diff.skippedDuplicateUsernames = skipped
   return diff
 }
 
 // 適用前検証：壊れた行・ファイル内重複・必須欠けを弾く（安全ルール#5）
-// 既知のレガシー重複（LEGACY_DUPLICATE_NUMBERS）は重複チェックの対象外とする
-// （上のcomputeImportDiffで完全スキップされるため）。それ以外の新規のusername
-// 重複は引き続き拒否する
+// 既知のレガシー重複（LEGACY_DUPLICATE_NUMBERS）は「ファイル内でusernameが重複」
+// というチェックの対象外とする（No.で一意に区別できるため）。それ以外の新規の
+// username重複は引き続き拒否する
 export function validateImportRecords(records: AccountAuthInput[]): string[] {
   const errors: string[] = []
   const seen = new Set<string>()

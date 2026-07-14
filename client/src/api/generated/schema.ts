@@ -121,14 +121,29 @@ export interface components {
             after: components["schemas"]["AccountAuthInput"];
             changedFields: string[];
         };
+        DeletedRow: {
+            username: string;
+            before: components["schemas"]["AccountAuth"];
+            after: components["schemas"]["AccountAuthInput"];
+        };
+        RestoredRow: {
+            username: string;
+            before: components["schemas"]["AccountAuth"];
+            after: components["schemas"]["AccountAuthInput"];
+        };
+        SkippedRow: {
+            username: string;
+            /** Format: double */
+            number: number | null;
+        };
         ImportDiff: {
             added: components["schemas"]["AccountAuthInput"][];
             changed: components["schemas"]["ChangedRow"][];
-            deleted: components["schemas"]["AccountAuthInput"][];
-            restored: components["schemas"]["AccountAuthInput"][];
+            deleted: components["schemas"]["DeletedRow"][];
+            restored: components["schemas"]["RestoredRow"][];
             /** Format: double */
             unchangedCount: number;
-            skippedDuplicateUsernames: string[];
+            skippedDuplicateUsernames: components["schemas"]["SkippedRow"][];
         };
         ApplyImportResult: {
             /** Format: double */

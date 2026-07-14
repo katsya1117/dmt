@@ -39,13 +39,6 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 // 削除フラグ列の有無に関わらず delfg=true とする
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
-// 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
-// 表現している箇所がある。exceljsは結合セルの値を範囲内の全セルに複製して
-// 返すため、この注記がusername/passwordとして誤って読み込まれる危険がある。
-// サーバー側 server/src/services/parseAccountAuthExcel.ts の
-// KESSABAN_NUMBERSと同じ考え方（No.ハードコード方式）
-const KESSABAN_NUMBERS: readonly number[] = []
-
 function cellToString(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toISOString().slice(0, 10)
@@ -108,8 +101,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       store_name: orNull('store_name'),
       delfg: toBool(raw.delfg) || hasCancelDate, // 「削除フラグ」列 or 「解約日」列に値があれば削除扱い
     }
-    const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
-    if ((record.username || record.password) && !isKessaban) result.push(record) // 空行・欠番注記行を除外
+    if (record.username || record.password) result.push(record) // 空行を除外
   })
 
   return result

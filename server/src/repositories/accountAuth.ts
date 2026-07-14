@@ -117,48 +117,53 @@ export function deleteAccountAuth(id: number): { deleted: number } {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Excel取り込み適用（apply）専用。username一致で判定する。
-// updateAccountAuth と違い delfg=0 を前提にしない
-// （論理削除済みの行をリストアで復活させる必要があるため）。
+// Excel取り込み適用（apply）専用。
+//
+// 【idで判定する】以前はusername一致でDB行を探していたが、username重複の
+// レガシーデータ（客先の旧運用による現役データ）が存在するため、usernameだけ
+// では「どの行を更新すべきか」を一意に決められない場合がある。差分計算
+// （accountAuthDiff.ts の computeImportDiff）が既にNo.等で正しいDB行を
+// 特定し、その id を渡してくる前提にすることで、この曖昧さを無くしている。
+// added（新規追加）だけは対応するDB行が無い＝usernameで新規INSERTでよい
+// （UNIQUE制約により、万一既存usernameと衝突すればDBレベルで弾かれる）。
 // ─────────────────────────────────────────────────────────────
 
-function upsertAccountAuthByUsername(input: AccountAuthInput): void {
+function insertAccountAuth(input: AccountAuthInput): void {
   const ts = nowStr()
-  const existing = db.prepare('SELECT id FROM account_auth WHERE username = ?').get(input.username) as { id: number } | undefined
-  if (existing) {
-    db.prepare(`
-      UPDATE account_auth SET
-        password = @password, comment = @comment, number = @number,
-        submission_date = @submission_date, regist_date = @regist_date,
-        company_cd = @company_cd, company_name = @company_name,
-        company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
-        non_sync = @non_sync, store_cd = @store_cd, store_name = @store_name,
-        delfg = @delfg, upd_date = @upd_date
-      WHERE id = @id
-    `).run({ ...input, id: existing.id, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, upd_date: ts })
-  } else {
-    db.prepare(`
-      INSERT INTO account_auth
-        (username, password, comment, number, submission_date, regist_date,
-         company_cd, company_name, company_store_cd, company_store_branch_num,
-         non_sync, store_cd, store_name, reg_date, upd_date, delfg)
-      VALUES
-        (@username, @password, @comment, @number, @submission_date, @regist_date,
-         @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
-         @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
-    `).run({ ...input, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, reg_date: ts, upd_date: ts })
-  }
+  db.prepare(`
+    INSERT INTO account_auth
+      (username, password, comment, number, submission_date, regist_date,
+       company_cd, company_name, company_store_cd, company_store_branch_num,
+       non_sync, store_cd, store_name, reg_date, upd_date, delfg)
+    VALUES
+      (@username, @password, @comment, @number, @submission_date, @regist_date,
+       @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
+       @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
+  `).run({ ...input, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, reg_date: ts, upd_date: ts })
 }
 
-function setDelfgByUsername(username: string, delfg: boolean): void {
-  db.prepare('UPDATE account_auth SET delfg = ?, upd_date = ? WHERE username = ?').run(delfg ? 1 : 0, nowStr(), username)
+function updateAccountAuthByIdForImport(id: number, input: AccountAuthInput): void {
+  db.prepare(`
+    UPDATE account_auth SET
+      username = @username, password = @password, comment = @comment, number = @number,
+      submission_date = @submission_date, regist_date = @regist_date,
+      company_cd = @company_cd, company_name = @company_name,
+      company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
+      non_sync = @non_sync, store_cd = @store_cd, store_name = @store_name,
+      delfg = @delfg, upd_date = @upd_date
+    WHERE id = @id
+  `).run({ ...input, id, non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, upd_date: nowStr() })
+}
+
+function setDelfgById(id: number, delfg: boolean): void {
+  db.prepare('UPDATE account_auth SET delfg = ?, upd_date = ? WHERE id = ?').run(delfg ? 1 : 0, nowStr(), id)
 }
 
 export interface ApplyImportParams {
   added: AccountAuthInput[]
-  changed: { after: AccountAuthInput }[]
-  deleted: { username: string }[]
-  restored: { username: string }[]
+  changed: { id: number; after: AccountAuthInput }[]
+  deleted: { id: number }[]
+  restored: { id: number }[]
 }
 
 export interface ApplyImportResult {
@@ -171,10 +176,10 @@ export interface ApplyImportResult {
 // 承認された差分だけを1トランザクションで反映する。ファイルにある行だけ触る（安全）
 export function applyAccountAuthImport(params: ApplyImportParams): ApplyImportResult {
   const tx = db.transaction(() => {
-    for (const a of params.added) upsertAccountAuthByUsername(a)
-    for (const c of params.changed) upsertAccountAuthByUsername(c.after)
-    for (const d of params.deleted) setDelfgByUsername(d.username, true)
-    for (const r of params.restored) setDelfgByUsername(r.username, false)
+    for (const a of params.added) insertAccountAuth(a)
+    for (const c of params.changed) updateAccountAuthByIdForImport(c.id, c.after)
+    for (const d of params.deleted) setDelfgById(d.id, true)
+    for (const r of params.restored) setDelfgById(r.id, false)
   })
   tx()
   return {

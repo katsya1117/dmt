@@ -73,26 +73,34 @@ export const accountAuthHandlers = [
   http.post('/api/account-auth/import/preview', async ({ request }) => {
     await delay(150)
     const records = await extractRecords(request)
-    const map = new Map(rows.map((r) => [r.username, r] as const))
+    const byUsername = new Map(rows.map((r) => [r.username, r] as const))
+    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     const added: AccountAuthInput[] = []
     const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
-    const deleted: AccountAuthInput[] = []
-    const restored: AccountAuthInput[] = []
+    const deleted: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
+    const restored: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
     let unchangedCount = 0
-    const skippedDuplicateUsernames = new Set<string>()
+    // usernameでdedupしない：同じusernameで複数のNo.が未マッチになりうるため、
+    // No.（本来の一意キー）ごとにそのまま記録する（サーバー側と同じ考え方）
+    const skippedDuplicateUsernames: { username: string; number: number | null }[] = []
     for (const r of records) {
-      if (isKnownLegacyDuplicate(r)) { skippedDuplicateUsernames.add(r.username); continue }
-      const cur = map.get(r.username)
-      if (!cur) { added.push(r); continue }
-      if (r.delfg && !cur.delfg) { deleted.push(r); continue }
-      if (!r.delfg && cur.delfg) { restored.push(r); continue }
+      const legacy = isKnownLegacyDuplicate(r)
+      // 既知のレガシー重複はusernameでは一意特定できないためNo.で照合する
+      // （サーバー側 computeImportDiff と同じ考え方。詳細はそちらのコメント参照）
+      const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
+      if (!cur) {
+        if (legacy) { skippedDuplicateUsernames.push({ username: r.username, number: r.number }) } else { added.push(r) }
+        continue
+      }
+      if (r.delfg && !cur.delfg) { deleted.push({ username: r.username, before: cur, after: r }); continue }
+      if (!r.delfg && cur.delfg) { restored.push({ username: r.username, before: cur, after: r }); continue }
       const changedFields = IMPORT_FIELDS.filter(
         (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
       )
       if (changedFields.length) changed.push({ username: r.username, before: cur, after: r, changedFields })
       else unchangedCount++
     }
-    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames: [...skippedDuplicateUsernames] })
+    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames })
   }),
 
   // 適用（承認後）。preview と同じ突合ロジックで反映する
@@ -116,15 +124,18 @@ export const accountAuthHandlers = [
       return HttpResponse.json({ error: '検証エラーがあります', errors }, { status: 400 })
     }
 
-    const map = new Map(rows.map((r) => [r.username, r] as const))
+    const byUsername = new Map(rows.map((r) => [r.username, r] as const))
+    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     let inserted = 0
     let updated = 0
     let deleted = 0
     let restored = 0
     for (const r of records) {
-      if (isKnownLegacyDuplicate(r)) continue // 既知のレガシー重複は一切触らない
-      const cur = map.get(r.username)
+      const legacy = isKnownLegacyDuplicate(r)
+      // 既知のレガシー重複はNo.でDB行を特定する（見つからなければ触らずスキップ）
+      const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
       if (!cur) {
+        if (legacy) continue
         rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
         inserted++
         continue

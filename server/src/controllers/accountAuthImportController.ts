@@ -46,9 +46,9 @@ export class AccountAuthImportController extends Controller {
     const diff = computeImportDiff(records, current)
     return applyAccountAuthImport({
       added: diff.added,
-      changed: diff.changed.map((c) => ({ after: c.after })),
-      deleted: diff.deleted.map((d) => ({ username: d.username })),
-      restored: diff.restored.map((d) => ({ username: d.username })),
+      changed: diff.changed.map((c) => ({ id: c.before.id, after: c.after })),
+      deleted: diff.deleted.map((d) => ({ id: d.before.id })),
+      restored: diff.restored.map((r) => ({ id: r.before.id })),
     })
   }
 }
