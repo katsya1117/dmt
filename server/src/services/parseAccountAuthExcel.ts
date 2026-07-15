@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { AccountAuthInput } from '../repositories/accountAuth'
+import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
 
 // ─────────────────────────────────────────────────────────────
 // Excel取り込みのパース（サーバー側）。
@@ -44,6 +45,29 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 // 削除（論理削除）扱い（客先側では行を赤塗りして運用している）。この列に値があれば
 // 削除フラグ列の有無に関わらず delfg=true とする
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
+
+// ─────────────────────────────────────────────────────────────
+// 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
+// 表現している箇所がある。exceljsは結合セルの値を範囲内の全セルに複製して
+// 返すため、この注記がusername/passwordとして誤って読み込まれ、実在しない
+// アカウントとして登録されてしまう危険がある。
+//
+// 【2026-07-14に一度撤去→2026-07-16復活】当初は自作テストファイル（結合範囲が
+// username列まで及ぶ想定）のみで検証しており、実データ未検証のためYAGNIで
+// 撤去していたが、実際の客先ファイルでもusername列まで結合が巻き込むことが
+// 確認されたため復活させた（詳細はdocs/アカウント認証_Excel取り込み設計.md）。
+//
+// この番号の行は最初からデータとして取り込まない（No.ハードコード方式。
+// LEGACY_DUPLICATE_NUMBERSと同じ考え方：内容の文字列判定ではなく明示的な
+// リストにすることで、想定外のデータを誤って除外/混入させない）。
+//
+// 更新方法：コードではなく server/src/data/accountAuthExcelKnownNumbers.json の
+// kessabanNumbers配列に対象No.を追加/削除するだけでよい（実行環境ごとに変わる
+// 設定ではなく業務データのため、envではなく専用のJSONデータファイルに分離。
+// 2026-07-16。client/src/data/の同名ファイルはMSWモック用の鏡なので、更新時は
+// 両方揃えること）。実際のNo.は客先確認待ちで空の配列（TODO）
+// ─────────────────────────────────────────────────────────────
+const KESSABAN_NUMBERS: readonly number[] = knownNumbers.kessabanNumbers
 
 function cellToString(value: unknown): string {
   if (value == null) return ''
@@ -109,7 +133,8 @@ export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<Accou
       store_name: orNull('store_name'),
       delfg: toBool(raw.delfg) || hasCancelDate,
     }
-    if (record.username || record.password) records.push(record) // 空行を除外
+    const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
+    if ((record.username || record.password) && !isKessaban) records.push(record) // 空行・欠番注記行を除外
   })
 
   return records

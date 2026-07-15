@@ -5,6 +5,7 @@
 // └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
+import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
 // 本番の取り込みはサーバー側パースに一本化した（server/src/services/
 // parseAccountAuthExcel.ts 参照）が、MSWはブラウザのfetch/axiosを横取り
 // するだけで実サーバーは立たないため、モック内ではこのクライアント側
@@ -60,9 +61,10 @@ async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
 }
 
 // 客先の旧運用によるusername重複の既知レコード（No.で特定）。
-// サーバー側 server/src/services/accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS と同等
-// （デモなので空のまま。実際のNo.が判明したらサーバー側と合わせて更新する）
-const LEGACY_DUPLICATE_NUMBERS: readonly number[] = []
+// サーバー側 server/src/services/accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS と同等。
+// この配列はserver/src/data/accountAuthExcelKnownNumbers.jsonの鏡（MSWモック用）。
+// 更新する時は両方揃えること
+const LEGACY_DUPLICATE_NUMBERS: readonly number[] = knownNumbers.legacyDuplicateNumbers
 
 function isKnownLegacyDuplicate(r: Pick<AccountAuthInput, 'number'>): boolean {
   return r.number != null && LEGACY_DUPLICATE_NUMBERS.includes(r.number)
@@ -109,15 +111,22 @@ export const accountAuthHandlers = [
     const records = await extractRecords(request)
 
     // 検証: 必須欠け・ファイル内の「新規」重複（既知のレガシー重複と一致しないもの）
+    // 行番号も記録する（usernameだけだと「ファイルの何行目同士が重複しているか」
+    // 分からないため。サーバー側 accountAuthDiff.ts の validateImportRecords と同じ）
     const errors: string[] = []
-    const seen = new Set<string>()
+    const firstSeenLine = new Map<string, number>()
     records.forEach((r, i) => {
-      if (!r.username) errors.push(`${i + 1}行目：usernameが空です`)
-      if (!r.password) errors.push(`${i + 1}行目：passwordが空です`)
+      const line = i + 1
+      if (!r.username) errors.push(`${line}行目：usernameが空です`)
+      if (!r.password) errors.push(`${line}行目：passwordが空です`)
       if (isKnownLegacyDuplicate(r)) return
       if (r.username) {
-        if (seen.has(r.username)) errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${r.username}`)
-        seen.add(r.username)
+        const first = firstSeenLine.get(r.username)
+        if (first != null) {
+          errors.push(`${line}行目：usernameが${first}行目と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+        } else {
+          firstSeenLine.set(r.username, line)
+        }
       }
     })
     if (errors.length > 0) {

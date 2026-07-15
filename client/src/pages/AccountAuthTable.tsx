@@ -18,6 +18,11 @@ import TextField from '@mui/material/TextField'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogActions from '@mui/material/DialogActions'
 import { DataGrid, GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
@@ -59,8 +64,10 @@ export default function AccountAuthTable() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
   const [toast, setToast] = useState<{ msg: string; severity: 'success' | 'error' } | null>(null)
-  // ブラウザ標準の confirm() は使わない（画面をブロックする・見た目が浮く）。
-  // 代わりにトースト（Snackbar）に「実行」ボタンを載せた確認トーストで統一する
+  // ブラウザ標準の confirm() は使わない（見た目が浮く）。
+  // トースト（Snackbar）は非モーダルで背景操作をブロックしないため、ユーザーの
+  // 決定を要求する確認には不向き（2026-07-16、トースト版から変更）。
+  // AccountAuthFormDialog/ImportDiffDialogと同じMUI Dialog（モーダル）に統一する
   const [confirmState, setConfirmState] = useState<{ message: string; onConfirm: () => void } | null>(null)
 
   // 差分プレビュー（マスタ/差分ファイル取り込み。プレビューは書き込みなし）
@@ -74,15 +81,20 @@ export default function AccountAuthTable() {
   // と誤解される（docs/design/account-auth/13_状態遷移図.md で指摘済みの課題）
   const [previewLoading, setPreviewLoading] = useState(false)
 
-  // No./ユーザー名の入力のたびにテーブルを絞り込む（onChangeで即時フィルタ）
-  // useMemoで固定：data/searchText以外のstate変更（トースト表示等）で毎回
+  // No.とユーザー名は別欄・AND条件で絞り込む（onChangeで即時フィルタ）。
+  // 以前は1つの欄でOR検索していたが、usernameに数字を含むデータ
+  // （例: user000001）とNo.検索が紛らわしく衝突しうるため分離した（2026-07-16）
+  // useMemoで固定：data/検索欄以外のstate変更（トースト表示等）で毎回
   // 再計算されるのを防ぐ（2026-07-14、絞り込みが重く感じる問題への対処）
-  const [searchText, setSearchText] = useState('')
+  const [numberSearch, setNumberSearch] = useState('')
+  const [usernameSearch, setUsernameSearch] = useState('')
   const filteredData = useMemo(() => data?.filter((row) => {
-    const q = searchText.trim().toLowerCase()
-    if (!q) return true
-    return String(row.number ?? '').includes(q) || row.username.toLowerCase().includes(q)
-  }), [data, searchText])
+    const numQ = numberSearch.trim().toLowerCase()
+    const userQ = usernameSearch.trim().toLowerCase()
+    if (numQ && !String(row.number ?? '').includes(numQ)) return false
+    if (userQ && !row.username.toLowerCase().includes(userQ)) return false
+    return true
+  }), [data, numberSearch, usernameSearch])
 
   // マスタ全件など大量の変更を誤って流し込む事故を防ぐための確認閾値
   const APPLY_CONFIRM_THRESHOLD = 50
@@ -220,11 +232,19 @@ export default function AccountAuthTable() {
         <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
         <TextField
           size="small"
-          sx={{ width: 260 }}
-          label="No./ユーザー名で絞り込み"
+          sx={{ width: 140 }}
+          label="No.で絞り込み"
           placeholder="例: 1001"
-          value={searchText}
-          onChange={(e) => setSearchText(e.target.value)}
+          value={numberSearch}
+          onChange={(e) => setNumberSearch(e.target.value)}
+        />
+        <TextField
+          size="small"
+          sx={{ width: 180 }}
+          label="ユーザー名で絞り込み"
+          placeholder="例: dealer001"
+          value={usernameSearch}
+          onChange={(e) => setUsernameSearch(e.target.value)}
         />
       </Stack>
 
@@ -264,7 +284,7 @@ export default function AccountAuthTable() {
       </Box>
       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
         {filteredData?.length ?? 0} 件
-        {searchText.trim() && ` （全 ${data?.length ?? 0} 件中）`}
+        {(numberSearch.trim() || usernameSearch.trim()) && ` （全 ${data?.length ?? 0} 件中）`}
       </Typography>
 
       <AccountAuthFormDialog
@@ -293,35 +313,24 @@ export default function AccountAuthTable() {
         {toast ? <Alert severity={toast.severity} onClose={() => setToast(null)}>{toast.msg}</Alert> : undefined}
       </Snackbar>
 
-      {/* confirm()の代わりの確認トースト。自動では閉じない（実行/キャンセルを押すまで表示し続ける） */}
-      <Snackbar
-        open={Boolean(confirmState)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        {confirmState ? (
-          <Alert
-            severity="warning"
-            variant="filled"
-            action={
-              <Stack direction="row" spacing={1}>
-                <Button color="inherit" size="small" onClick={() => setConfirmState(null)}>
-                  キャンセル
-                </Button>
-                <Button
-                  color="inherit"
-                  size="small"
-                  variant="outlined"
-                  onClick={() => { confirmState.onConfirm(); setConfirmState(null) }}
-                >
-                  実行
-                </Button>
-              </Stack>
-            }
+      {/* confirm()の代わりのモーダル確認ダイアログ。背景操作をブロックし、
+          キャンセル/実行いずれかを押すまで先に進めない */}
+      <Dialog open={Boolean(confirmState)} onClose={() => setConfirmState(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>確認</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{confirmState?.message}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmState(null)}>キャンセル</Button>
+          <Button
+            variant="contained"
+            onClick={() => { confirmState?.onConfirm(); setConfirmState(null) }}
+            autoFocus
           >
-            {confirmState.message}
-          </Alert>
-        ) : undefined}
-      </Snackbar>
+            実行
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

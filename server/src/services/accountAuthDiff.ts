@@ -1,4 +1,5 @@
 import type { AccountAuth, AccountAuthInput } from '../repositories/accountAuth'
+import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
 
 // ─────────────────────────────────────────────────────────────
 // Excel取り込みの差分計算（純粋関数・書き込みなし）。
@@ -59,12 +60,14 @@ export interface ImportDiff {
 // 通常通り検知・適用される。usernameが重複していてもNo.は一意という
 // 前提のもと、DB行の照合はusernameではなくNo.で行う（下記computeImportDiff参照）。
 //
-// 更新方法：この配列に対象レコードのNo.を追加/削除するだけでよい
+// 更新方法：コードではなく server/src/data/accountAuthExcelKnownNumbers.json の
+// legacyDuplicateNumbers配列に対象レコードのNo.を追加/削除するだけでよい
+// （実行環境ごとに変わる設定ではなく業務データのため、envではなく専用のJSON
+// データファイルに分離している。2026-07-16。client/src/data/の同名ファイルは
+// MSWモック用の鏡なので、更新時は両方揃えること）
 // （2026-07-13時点、実際のNo.は未確定 — 客先に確認の上で埋めること）
 // ─────────────────────────────────────────────────────────────
-const LEGACY_DUPLICATE_NUMBERS: readonly number[] = [
-  // TODO: 客先から実際のNo.を確認して埋める
-]
+const LEGACY_DUPLICATE_NUMBERS: readonly number[] = knownNumbers.legacyDuplicateNumbers
 
 function isKnownLegacyDuplicate(record: Pick<AccountAuthInput, 'number'>): boolean {
   return record.number != null && LEGACY_DUPLICATE_NUMBERS.includes(record.number)
@@ -133,14 +136,23 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
 // username重複は引き続き拒否する
 export function validateImportRecords(records: AccountAuthInput[]): string[] {
   const errors: string[] = []
-  const seen = new Set<string>()
+  // 【行番号(No.)も記録する】usernameそのものが重複の原因なので、usernameだけを
+  // エラーメッセージに出しても「ファイルの何行目とどこが重複しているか」が
+  // 分からない。初出の行番号を記録し、重複検出時に両方の行番号を提示する
+  // （2026-07-16、ユーザー指摘。skippedDuplicateUsernamesで直した問題と同種）
+  const firstSeenLine = new Map<string, number>()
   records.forEach((r, i) => {
-    if (!r.username) errors.push(`${i + 1}行目：usernameが空です`)
-    if (!r.password) errors.push(`${i + 1}行目：passwordが空です`)
+    const line = i + 1
+    if (!r.username) errors.push(`${line}行目：usernameが空です`)
+    if (!r.password) errors.push(`${line}行目：passwordが空です`)
     if (isKnownLegacyDuplicate(r)) return
     if (r.username) {
-      if (seen.has(r.username)) errors.push(`ファイル内でusernameが重複しています（新規の重複登録は許可されません）: ${r.username}`)
-      seen.add(r.username)
+      const first = firstSeenLine.get(r.username)
+      if (first != null) {
+        errors.push(`${line}行目：usernameが${first}行目と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+      } else {
+        firstSeenLine.set(r.username, line)
+      }
     }
   })
   return errors

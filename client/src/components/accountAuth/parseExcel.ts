@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import type { AccountAuthInput } from '../../api/accountAuth'
+import knownNumbers from '../../data/accountAuthExcelKnownNumbers.json'
 
 // ─────────────────────────────────────────────────────────────
 // 【本番の取り込みフローでは使われていません】
@@ -38,6 +39,15 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 // 削除（論理削除）扱い（客先側では行を赤塗りして運用している）。この列に値があれば
 // 削除フラグ列の有無に関わらず delfg=true とする
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
+
+// 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
+// 表現している箇所がある。exceljsは結合セルの値を範囲内の全セルに複製して
+// 返すため、この注記がusername/passwordとして誤って読み込まれる（2026-07-16、
+// 実データで確認済み）。サーバー側 server/src/services/parseAccountAuthExcel.ts の
+// KESSABAN_NUMBERSと同じ考え方（No.ハードコード方式）。
+// この配列はserver/src/data/accountAuthExcelKnownNumbers.jsonの鏡（MSWモック用）。
+// 更新する時は両方揃えること
+const KESSABAN_NUMBERS: readonly number[] = knownNumbers.kessabanNumbers
 
 function cellToString(value: unknown): string {
   if (value == null) return ''
@@ -101,7 +111,8 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       store_name: orNull('store_name'),
       delfg: toBool(raw.delfg) || hasCancelDate, // 「削除フラグ」列 or 「解約日」列に値があれば削除扱い
     }
-    if (record.username || record.password) result.push(record) // 空行を除外
+    const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
+    if ((record.username || record.password) && !isKessaban) result.push(record) // 空行・欠番注記行を除外
   })
 
   return result
