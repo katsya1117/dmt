@@ -162,10 +162,9 @@ export const accountAuthHandlers = [
     return HttpResponse.json({ inserted, updated, deleted, restored })
   }),
 
-  http.get('/api/account-auth', async ({ request }) => {
+  http.get('/api/account-auth', async () => {
     await delay(150)
-    const includeDeleted = new URL(request.url).searchParams.get('includeDeleted') === 'true'
-    return HttpResponse.json(includeDeleted ? rows : visible())
+    return HttpResponse.json(rows)
   }),
 
   http.post('/api/account-auth', async ({ request }) => {

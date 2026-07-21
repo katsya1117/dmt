@@ -32,11 +32,11 @@ export const accountAuthApi = createApi({
   baseQuery: fakeBaseQuery<ApiError>(),
   tagTypes: ['AccountAuth'],
   endpoints: (builder) => ({
-    // includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用）
-    accountAuthList: builder.query<AccountAuth[], boolean | undefined>({
-      queryFn: async (includeDeleted) => {
+    // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
+    accountAuthList: builder.query<AccountAuth[], void>({
+      queryFn: async () => {
         try {
-          return { data: await fetchAccountAuthList(includeDeleted) }
+          return { data: await fetchAccountAuthList() }
         } catch (err) {
           return { error: err as ApiError }
         }

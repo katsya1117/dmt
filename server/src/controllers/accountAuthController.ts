@@ -1,7 +1,6 @@
 // ※ DELETE を開放する時は import に `Delete` を、下記import に `deleteAccountAuth` を戻す
-import { Body, Controller, Get, Path, Post, Put, Query, Route, SuccessResponse, Response, Tags } from 'tsoa'
+import { Body, Controller, Get, Path, Post, Put, Route, SuccessResponse, Response, Tags } from 'tsoa'
 import {
-  listAccountAuth,
   listAllAccountAuth,
   createAccountAuth,
   updateAccountAuth,
@@ -29,10 +28,10 @@ interface ErrorResponse {
 @Route('account-auth')
 @Tags('アカウント認証')
 export class AccountAuthController extends Controller {
-  /** 一覧取得。includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用） */
+  /** 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
   @Get()
-  public async list(@Query() includeDeleted?: boolean): Promise<AccountAuth[]> {
-    return includeDeleted ? listAllAccountAuth() : listAccountAuth()
+  public async list(): Promise<AccountAuth[]> {
+    return listAllAccountAuth()
   }
 
   /** 追加（1件もExcel複数件も同じ口） */

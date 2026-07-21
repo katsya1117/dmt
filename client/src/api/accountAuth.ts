@@ -17,12 +17,10 @@ import { http } from './http'
 export type AccountAuth = components['schemas']['AccountAuth']
 export type AccountAuthInput = components['schemas']['AccountAuthInput']
 
-// includeDeleted=true で削除済み(delfg=1)も含める（手動リストア用）
-export async function fetchAccountAuthList(includeDeleted = false): Promise<AccountAuth[]> {
+// 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
+export async function fetchAccountAuthList(): Promise<AccountAuth[]> {
   try {
-    const res = await http.get<AccountAuth[]>('/api/account-auth', {
-      params: includeDeleted ? { includeDeleted: true } : undefined,
-    })
+    const res = await http.get<AccountAuth[]>('/api/account-auth')
     return res.data
   } catch (err) {
     throw toApiError(err, 'アカウント認証一覧の取得に失敗しました')

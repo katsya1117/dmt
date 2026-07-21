@@ -56,14 +56,7 @@ function toApi(row: Row): AccountAuth {
 
 const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 
-export function listAccountAuth(): AccountAuth[] {
-  const rows = db
-    .prepare('SELECT * FROM account_auth WHERE delfg = 0 ORDER BY id')
-    .all() as Row[]
-  return rows.map(toApi)
-}
-
-// 差分計算用：論理削除(delfg=1)も含めた全件（リストア判定に必要）
+// 論理削除(delfg=1)も含めた全件（削除済み行は「状態」列で区別して表示する）
 export function listAllAccountAuth(): AccountAuth[] {
   const rows = db.prepare('SELECT * FROM account_auth ORDER BY id').all() as Row[]
   return rows.map(toApi)

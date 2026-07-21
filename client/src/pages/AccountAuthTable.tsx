@@ -55,7 +55,7 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
 export default function AccountAuthTable() {
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
   // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
-  const { data, isLoading, error } = accountAuthApi.useAccountAuthListQuery(true)
+  const { data, isLoading, error } = accountAuthApi.useAccountAuthListQuery()
   const [create, { isLoading: creating }] = accountAuthApi.useCreateAccountAuthMutation()
   const [update, { isLoading: updating }] = accountAuthApi.useUpdateAccountAuthMutation()
   const [applyImportDiff, { isLoading: applying }] = accountAuthApi.useApplyAccountAuthImportDiffMutation()
