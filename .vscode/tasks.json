@@ -2,6 +2,13 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "server: generate tsoa routes",
+      "type": "shell",
+      "command": "npm run tsoa",
+      "options": { "cwd": "${workspaceFolder}/server" },
+      "presentation": { "reveal": "silent", "panel": "dedicated" }
+    },
+    {
       "label": "client: dev server",
       "type": "shell",
       "command": "yarn dev",

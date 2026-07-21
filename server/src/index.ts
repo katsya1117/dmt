@@ -13,7 +13,7 @@ import { config } from './config'
 
 const app = express()
 
-app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(cors({ origin: 'http://localhost:3000' }))
 // Excel取り込み（マスタ全件2万行規模）はJSONペイロードが数MBになるため、
 // デフォルト上限(100kb)では即413/500になる。余裕を持って50mbに引き上げる
 app.use(express.json({ limit: '50mb' }))

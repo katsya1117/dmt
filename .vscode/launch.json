@@ -5,12 +5,13 @@
       "type": "node",
       "request": "launch",
       "name": "Server (Express/tsx)",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["tsx", "watch", "src/index.ts"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch", "--import", "tsx", "src/index.ts"],
       "cwd": "${workspaceFolder}/server",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
-      "restart": true
+      "restart": true,
+      "preLaunchTask": "server: generate tsoa routes"
     },
     {
       "type": "chrome",
