@@ -1,13 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import ExcelJS from 'exceljs'
+import * as XLSX from 'xlsx'
 import { parseAccountAuthExcel } from './parseExcel'
 
 async function makeXlsxFile(headers: string[], rows: (string | number)[][]): Promise<File> {
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet('Sheet1')
-  ws.addRow(headers)
-  rows.forEach((r) => ws.addRow(r))
-  const buf = await wb.xlsx.writeBuffer()
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
   return new File([buf], 'test.xlsx', {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })

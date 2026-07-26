@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs'
+import * as XLSX from 'xlsx'
 import type { AccountAuthInput } from '../../api/accountAuth'
 import knownNumbers from '../../data/accountAuthExcelKnownNumbers.json'
 
@@ -41,9 +41,10 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
 // 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
-// 表現している箇所がある。exceljsは結合セルの値を範囲内の全セルに複製して
-// 返すため、この注記がusername/passwordとして誤って読み込まれる（2026-07-16、
-// 実データで確認済み）。サーバー側 server/src/services/parseAccountAuthExcel.ts の
+// 表現している箇所がある。結合セルの値は左上端のセルにのみ入っており、
+// 実際の客先ファイルではusername列が結合範囲の左上端に来るため、この注記が
+// usernameとして誤って読み込まれる（2026-07-16、実データで確認済み）。
+// サーバー側 server/src/services/parseAccountAuthExcel.ts の
 // KESSABAN_NUMBERSと同じ考え方（No.ハードコード方式）。
 // この配列はserver/src/data/accountAuthExcelKnownNumbers.jsonの鏡（MSWモック用）。
 // 更新する時は両方揃えること
@@ -65,31 +66,33 @@ function toBool(v: unknown): boolean {
   return ['1', 'true', 'TRUE', '対象外', '○', 'yes', 'Y'].includes(s)
 }
 
-/** .xlsx ファイルを読み、AccountAuthInput[] に変換する */
+/** .xlsx/.xls ファイルを読み、AccountAuthInput[] に変換する */
 export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInput[]> {
   const buf = await file.arrayBuffer()
-  const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(buf)
-  const ws = wb.worksheets[0]
-  if (!ws) return []
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true })
+  const sheetName = wb.SheetNames[0]
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined
+  if (!ws || !ws['!ref']) return []
+
+  const range = XLSX.utils.decode_range(ws['!ref'])
+  const cellValue = (r: number, c: number): unknown => ws[XLSX.utils.encode_cell({ r, c })]?.v
 
   const colToField: Record<number, keyof AccountAuthInput> = {}
   let cancelDateCol: number | null = null
-  ws.getRow(1).eachCell((cell, col) => {
-    const header = cellToString(cell.value).trim()
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const header = cellToString(cellValue(range.s.r, c)).trim()
     const field = HEADER_MAP[header]
-    if (field) colToField[col] = field
-    if (CANCEL_DATE_HEADERS.includes(header)) cancelDateCol = col
-  })
+    if (field) colToField[c] = field
+    if (CANCEL_DATE_HEADERS.includes(header)) cancelDateCol = c
+  }
 
   const result: AccountAuthInput[] = []
-  ws.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
     const raw: Partial<Record<keyof AccountAuthInput, unknown>> = {}
     for (const [colStr, field] of Object.entries(colToField)) {
-      raw[field] = row.getCell(Number(colStr)).value
+      raw[field] = cellValue(r, Number(colStr))
     }
-    const hasCancelDate = cancelDateCol != null && cellToString(row.getCell(cancelDateCol).value).trim() !== ''
+    const hasCancelDate = cancelDateCol != null && cellToString(cellValue(r, cancelDateCol)).trim() !== ''
     const orNull = (k: keyof AccountAuthInput): string | null => {
       const s = cellToString(raw[k]).trim()
       return s === '' ? null : s
@@ -113,7 +116,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
     }
     const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
     if ((record.username || record.password) && !isKessaban) result.push(record) // 空行・欠番注記行を除外
-  })
+  }
 
   return result
 }
