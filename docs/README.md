@@ -43,7 +43,7 @@ d社マニュアルメンテナンスツールの設計・実装ドキュメン�
 | 認証・権限 | 認証なし・ログイン不要 | **認証・権限管理が中核** | 客先で**顧客社員**が一部機能を使うため |
 | ハード構成 | 社内1台に集約 | **社内Windows1台 ＋ 客先軽量デプロイの2拠点** | 客先利用の判明 |
 | デモのデータ源 | （未定） | **B3方式: Express + SQLite**（本番は `repositories/` 差し替え） | 客先DBに未接続のため |
-| Excel解析 | xlsx (SheetJS) | **exceljs** | xlsxはnpm版が塩漬け＋CVE |
+| Excel解析 | xlsx (SheetJS) → exceljs | **xlsx (SheetJS)**（SheetJS公式CDN経由でインストール） | 客先台帳に旧.xls形式もあり、.xlsx専用のexceljsでは読めないため再度乗り換え。npm版xlsxの既知CVEはSheetJS公式CDN（cdn.sheetjs.com）から修正済みバージョンを取得することで解消 |
 | React | 18（安定重視で据置） | **19**（依存全面更新） | 全面更新を実施 |
 | HTTP通信 | node-fetch | **Node組み込み fetch** | 不要依存の削除 |
 | API層 | 手書きExpressルート＋手書き検証 | **tsoa**（型からルート/検証/OpenAPI生成）＋Swagger UI | 型の単一の真実・検証自動化 |

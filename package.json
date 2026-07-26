@@ -2,12 +2,12 @@
   "name": "maintenance",
   "private": true,
   "scripts": {
-    "gen:api": "npm --prefix server run tsoa && yarn --cwd client gen:types",
-    "ensure:deps": "([ -x client/node_modules/.bin/vite ] || yarn --cwd client install) && ([ -d server/node_modules ] || npm --prefix server install)",
-    "predev": "npm run ensure:deps",
-    "dev": "concurrently -k -n client,server -c blue,green \"yarn --cwd client dev\" \"(npm run gen:api && npm --prefix server run dev) || true\"",
+    "gen:api": "yarn --cwd server tsoa && yarn --cwd client gen:types",
+    "ensure:deps": "([ -x client/node_modules/.bin/vite ] || yarn --cwd client install) && ([ -d server/node_modules ] || yarn --cwd server install)",
+    "predev": "yarn ensure:deps",
+    "dev": "concurrently -k -n client,server -c blue,green \"yarn --cwd client dev\" \"(yarn gen:api && yarn --cwd server dev) || true\"",
     "dev:client": "yarn --cwd client dev",
-    "dev:server": "npm --prefix server run dev"
+    "dev:server": "yarn --cwd server dev"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

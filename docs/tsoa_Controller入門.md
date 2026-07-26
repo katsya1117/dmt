@@ -161,12 +161,12 @@ public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportD
 
 ## 8. 自動生成は「いつ」起きるのか
 
-ここまでの話は「型と飾りを書けば、あとは自動でやってくれる」だったが、それはコードを書いた**その瞬間**に起きるわけではない。`npm run tsoa`（中身は`tsoa spec-and-routes`というコマンド）を実行したタイミングで、まとめて生成される。
+ここまでの話は「型と飾りを書けば、あとは自動でやってくれる」だったが、それはコードを書いた**その瞬間**に起きるわけではない。`yarn tsoa`（中身は`tsoa spec-and-routes`というコマンド）を実行したタイミングで、まとめて生成される。
 
 ```
 server/src/controllers/*.ts（自分が書いたコントローラ）
         │
-        │  npm run tsoa
+        │  yarn tsoa
         ▼
 server/src/generated/routes.ts    ← Expressのルート登録コード（自動生成）
 server/src/generated/swagger.json ← API仕様書（自動生成）
@@ -182,7 +182,7 @@ RegisterRoutes(app, { multer: multer({ limits: { fileSize: 50 * 1024 * 1024 } })
 
 この1行が、生成された「`account-auth`関連の全ルート登録」を、まとめて`app`に登録している。手書きルートでいう`app.use('/api/katashiki', katashikiRouter)`を、コントローラの数だけ自動でやってくれているようなもの。
 
-**注意点**：`server/src/generated/`は`.gitignore`対象で、Gitには含まれていない。つまり`npm run tsoa`を1度も実行していない環境では、この`import`が解決できずサーバーが起動しない。`npm run dev`は`tsoa`実行込みなのでこれで動く（`"dev": "npm run tsoa && tsx watch src/index.ts"`）。
+**注意点**：`server/src/generated/`は`.gitignore`対象で、Gitには含まれていない。つまり`yarn tsoa`を1度も実行していない環境では、この`import`が解決できずサーバーが起動しない。`yarn dev`は`tsoa`実行込みなのでこれで動く（`"dev": "yarn tsoa && tsx watch src/index.ts"`）。
 
 ---
 
@@ -192,7 +192,7 @@ tsoaが生成した`swagger.json`（API仕様書）は、もう1段階、別の�
 
 ```
 コントローラの型（サーバー）
-   │ npm run tsoa
+   │ yarn tsoa
    ▼
 swagger.json（API仕様書）
    │ openapi-typescript
@@ -200,7 +200,7 @@ swagger.json（API仕様書）
 schema.ts（クライアント側の型）
 ```
 
-つまり、**「サーバーが受け取る/返す形」の一次情報はコントローラの型だけ**で、クライアント側は手で二重に型を定義しない。コントローラの型を変えれば、`npm run gen:api`を実行するだけでクライアント側の型も追従する。
+つまり、**「サーバーが受け取る/返す形」の一次情報はコントローラの型だけ**で、クライアント側は手で二重に型を定義しない。コントローラの型を変えれば、`yarn gen:api`を実行するだけでクライアント側の型も追従する。
 
 ---
 
@@ -208,6 +208,6 @@ schema.ts（クライアント側の型）
 
 1. **コントローラ＝業務ごとの窓口のまとまり。** `AccountAuthController`のように、関連する処理をクラス1つにまとめる。
 2. **tsoaは「型＋デコレーター」から「ルート登録・入力検証・API仕様書」を自動生成する。** 自分で`app.use`もバリデーションも書かない。
-3. **生成は`npm run tsoa`実行時に一度だけ起きる。** コードを保存した瞬間ではない。生成物はGit管理外なので、動かす前に必ず実行が要る（`npm run dev`はこれ込み）。
+3. **生成は`yarn tsoa`実行時に一度だけ起きる。** コードを保存した瞬間ではない。生成物はGit管理外なので、動かす前に必ず実行が要る（`yarn dev`はこれ込み）。
 
 関連: [Express入門](Express入門.md)（ルーティング・ミドルウェアの基礎） / [データフロー](データフロー.md)（コントローラの前後にある層） / [画面実装パターン](画面実装パターン.md)（コントローラを含む8ファイル構成）

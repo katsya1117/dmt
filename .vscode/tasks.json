@@ -4,7 +4,7 @@
     {
       "label": "server: generate tsoa routes",
       "type": "shell",
-      "command": "npm run tsoa",
+      "command": "yarn tsoa",
       "options": { "cwd": "${workspaceFolder}/server" },
       "presentation": { "reveal": "silent", "panel": "dedicated" }
     },

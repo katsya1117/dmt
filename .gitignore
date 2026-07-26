@@ -37,3 +37,7 @@ server/data/
 
 # tsoa generated (routes/spec) — dev/buildで自動生成
 server/src/generated/
+
+# client/serverともyarn運用（yarn.lockが正）。npmで誤って生成されたロックファイルは無視
+client/package-lock.json
+server/package-lock.json
