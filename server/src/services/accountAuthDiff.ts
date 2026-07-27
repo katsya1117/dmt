@@ -43,6 +43,9 @@ export interface ImportDiff {
   restored: RestoredRow[]
   unchangedCount: number
   skippedDuplicateUsernames: SkippedRow[]
+  // ファイル内重複などの検証エラー（validateImportRecordsと同じ内容）。
+  // プレビュー時点で気づけるように、差分計算自体は止めずここに載せて返す
+  validationErrors: string[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -91,7 +94,10 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
     if (c.number != null) byNumber.set(c.number, c)
   }
 
-  const diff: ImportDiff = { added: [], changed: [], deleted: [], restored: [], unchangedCount: 0, skippedDuplicateUsernames: [] }
+  const diff: ImportDiff = {
+    added: [], changed: [], deleted: [], restored: [], unchangedCount: 0,
+    skippedDuplicateUsernames: [], validationErrors: [],
+  }
   const skipped: SkippedRow[] = []
 
   for (const r of records) {
@@ -133,7 +139,9 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
 // 適用前検証：壊れた行・ファイル内重複・必須欠けを弾く（安全ルール#5）
 // 既知のレガシー重複（LEGACY_DUPLICATE_NUMBERS）は「ファイル内でusernameが重複」
 // というチェックの対象外とする（No.で一意に区別できるため）。それ以外の新規の
-// username重複は引き続き拒否する
+// username重複は引き続き拒否する。
+// No.は本番DBの制約構成に関わらずアプリ側で一意性を保証する唯一の層のため、
+// レガシー例外なしで常に重複を拒否する
 export function validateImportRecords(records: AccountAuthInput[]): string[] {
   const errors: string[] = []
   // 【行番号(No.)も記録する】usernameそのものが重複の原因なので、usernameだけを
@@ -141,10 +149,19 @@ export function validateImportRecords(records: AccountAuthInput[]): string[] {
   // 分からない。初出の行番号を記録し、重複検出時に両方の行番号を提示する
   // （2026-07-16、ユーザー指摘。skippedDuplicateUsernamesで直した問題と同種）
   const firstSeenLine = new Map<string, number>()
+  const firstSeenNumberLine = new Map<number, number>()
   records.forEach((r, i) => {
     const line = i + 1
     if (!r.username) errors.push(`${line}行目：usernameが空です`)
     if (!r.password) errors.push(`${line}行目：passwordが空です`)
+    if (r.number != null) {
+      const firstNumber = firstSeenNumberLine.get(r.number)
+      if (firstNumber != null) {
+        errors.push(`${line}行目：No.が${firstNumber}行目と重複しています（No.は一意である必要があります）: ${r.number}`)
+      } else {
+        firstSeenNumberLine.set(r.number, line)
+      }
+    }
     if (isKnownLegacyDuplicate(r)) return
     if (r.username) {
       const first = firstSeenLine.get(r.username)

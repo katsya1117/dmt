@@ -24,12 +24,15 @@ interface ImportErrorResponse {
 @Route('account-auth/import')
 @Tags('アカウント認証 取り込み')
 export class AccountAuthImportController extends Controller {
-  /** 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する */
+  /** 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する。
+   *  検証エラーがあっても差分自体は返す（applyで拒否されることを事前に知らせるため） */
   @Post('preview')
   public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff> {
     const records = await parseAccountAuthExcelBuffer(file.buffer)
     const current = listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
-    return computeImportDiff(records, current)
+    const diff = computeImportDiff(records, current)
+    diff.validationErrors = validateImportRecords(records)
+    return diff
   }
 
   /** 差分を承認後に適用。DBを再読込し差分を再計算してから反映する（プレビュー後のDB変化に追従） */

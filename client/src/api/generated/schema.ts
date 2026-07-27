@@ -13,7 +13,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する */
+        /**
+         * @description 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する。
+         *     検証エラーがあっても差分自体は返す（applyで拒否されることを事前に知らせるため）
+         */
         post: operations["Preview"];
         delete?: never;
         options?: never;
@@ -144,6 +147,7 @@ export interface components {
             /** Format: double */
             unchangedCount: number;
             skippedDuplicateUsernames: components["schemas"]["SkippedRow"][];
+            validationErrors: string[];
         };
         ApplyImportResult: {
             /** Format: double */

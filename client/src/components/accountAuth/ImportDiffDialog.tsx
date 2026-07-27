@@ -50,6 +50,7 @@ type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput;
 
 export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
+  const hasValidationErrors = !!diff?.validationErrors.length
 
   const rows: Row[] = diff
     ? [
@@ -124,6 +125,14 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           変更なし：{diff?.unchangedCount ?? 0} 件（表示しません）
         </Typography>
+        {hasValidationErrors && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            検証エラーがあります。この内容のままでは適用できません（{diff.validationErrors.length}件）:
+            <Box component="ul" sx={{ m: 0, pl: 3 }}>
+              {diff.validationErrors.map((e) => <li key={e}>{e}</li>)}
+            </Box>
+          </Alert>
+        )}
         {!!diff?.skippedDuplicateUsernames.length && (
           <Alert severity="warning" sx={{ mt: 1 }}>
             以下は既知の重複登録（客先の旧運用によるもの）ですが、対応するNo.のレコードがDBに見つからなかったため変更していません。データ不整合の可能性があるため確認してください（{diff.skippedDuplicateUsernames.length}件）:{' '}
@@ -133,7 +142,7 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={applying}>閉じる</Button>
-        <Button variant="contained" onClick={onApply} disabled={!hasChanges || applying}>
+        <Button variant="contained" onClick={onApply} disabled={!hasChanges || hasValidationErrors || applying}>
           {applying ? '適用中…' : 'この内容で適用'}
         </Button>
       </DialogActions>

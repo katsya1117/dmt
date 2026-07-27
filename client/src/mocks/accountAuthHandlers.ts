@@ -70,6 +70,37 @@ function isKnownLegacyDuplicate(r: Pick<AccountAuthInput, 'number'>): boolean {
   return r.number != null && LEGACY_DUPLICATE_NUMBERS.includes(r.number)
 }
 
+// 検証: 必須欠け・ファイル内の「新規」username重複（既知のレガシー重複と一致しないもの）・No.重複。
+// サーバー側 accountAuthDiff.ts の validateImportRecords と同じロジック（preview/apply共通で使う）
+function validateImportRecords(records: AccountAuthInput[]): string[] {
+  const errors: string[] = []
+  const firstSeenLine = new Map<string, number>()
+  const firstSeenNumberLine = new Map<number, number>()
+  records.forEach((r, i) => {
+    const line = i + 1
+    if (!r.username) errors.push(`${line}行目：usernameが空です`)
+    if (!r.password) errors.push(`${line}行目：passwordが空です`)
+    if (r.number != null) {
+      const firstNumber = firstSeenNumberLine.get(r.number)
+      if (firstNumber != null) {
+        errors.push(`${line}行目：No.が${firstNumber}行目と重複しています（No.は一意である必要があります）: ${r.number}`)
+      } else {
+        firstSeenNumberLine.set(r.number, line)
+      }
+    }
+    if (isKnownLegacyDuplicate(r)) return
+    if (r.username) {
+      const first = firstSeenLine.get(r.username)
+      if (first != null) {
+        errors.push(`${line}行目：usernameが${first}行目と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+      } else {
+        firstSeenLine.set(r.username, line)
+      }
+    }
+  })
+  return errors
+}
+
 export const accountAuthHandlers = [
   // 差分プレビュー（書き込みなし）。サーバーの diff ロジックと同等
   http.post('/api/account-auth/import/preview', async ({ request }) => {
@@ -102,7 +133,8 @@ export const accountAuthHandlers = [
       if (changedFields.length) changed.push({ username: r.username, before: cur, after: r, changedFields })
       else unchangedCount++
     }
-    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames })
+    const validationErrors = validateImportRecords(records)
+    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames, validationErrors })
   }),
 
   // 適用（承認後）。preview と同じ突合ロジックで反映する
@@ -110,25 +142,7 @@ export const accountAuthHandlers = [
     await delay(150)
     const records = await extractRecords(request)
 
-    // 検証: 必須欠け・ファイル内の「新規」重複（既知のレガシー重複と一致しないもの）
-    // 行番号も記録する（usernameだけだと「ファイルの何行目同士が重複しているか」
-    // 分からないため。サーバー側 accountAuthDiff.ts の validateImportRecords と同じ）
-    const errors: string[] = []
-    const firstSeenLine = new Map<string, number>()
-    records.forEach((r, i) => {
-      const line = i + 1
-      if (!r.username) errors.push(`${line}行目：usernameが空です`)
-      if (!r.password) errors.push(`${line}行目：passwordが空です`)
-      if (isKnownLegacyDuplicate(r)) return
-      if (r.username) {
-        const first = firstSeenLine.get(r.username)
-        if (first != null) {
-          errors.push(`${line}行目：usernameが${first}行目と重複しています（新規の重複登録は許可されません）: ${r.username}`)
-        } else {
-          firstSeenLine.set(r.username, line)
-        }
-      }
-    })
+    const errors = validateImportRecords(records)
     if (errors.length > 0) {
       return HttpResponse.json({ error: '検証エラーがあります', errors }, { status: 400 })
     }
