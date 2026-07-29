@@ -44,13 +44,54 @@ export function resetAccountAuthMock() {
 }
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
-const visible = () => rows.filter((r) => !r.delfg)
 
+// 【commentは含めない】備考欄はExcelから来るものではなく運用担当者が手動編集する
+// ものなので、差分検知・上書きの対象にしない（サーバー側 accountAuthDiff.ts と同じ）
 const IMPORT_FIELDS = [
-  'username', 'password', 'comment', 'number', 'submission_date', 'regist_date',
+  'username', 'password', 'number', 'submission_date', 'regist_date',
   'company_cd', 'company_name', 'company_store_cd', 'company_store_branch_num',
   'non_sync', 'store_cd', 'store_name', 'delfg',
 ] as (keyof AccountAuthInput)[]
+
+const FIELD_LABELS: Partial<Record<keyof AccountAuthInput, string>> = {
+  username: 'ユーザー名',
+  number: 'No.',
+  submission_date: '申込日',
+  regist_date: '登録日',
+  company_cd: '販社CD',
+  company_name: '販売会社',
+  company_store_cd: '販売会社店舗CD',
+  company_store_branch_num: '店舗CD枝番',
+  non_sync: '診断データ対象外',
+  store_cd: '販売店CD',
+  store_name: '販売店名',
+}
+
+function todayStr(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`
+}
+
+function formatValue(v: string | number | boolean | null): string {
+  if (v === null || v === '') return '（空）'
+  if (typeof v === 'boolean') return v ? 'ON' : 'OFF'
+  return String(v)
+}
+
+// サーバー側 accountAuthDiff.ts の buildChangeComment と同じロジック
+function buildChangeComment(changedFields: (keyof AccountAuthInput)[], before: AccountAuth, after: AccountAuthInput): string | null {
+  const parts = changedFields
+    .filter((f) => f !== 'password')
+    .map((f) => `${FIELD_LABELS[f] ?? f}変更 ${formatValue(before[f])}→${formatValue(after[f])}`)
+  if (changedFields.includes('password')) parts.push('パスワード変更')
+  if (parts.length === 0) return null
+  return `${todayStr()} ${parts.join('、')}`
+}
+
+function appendComment(existing: string | null, addition: string): string {
+  return existing && existing.trim() !== '' ? `${existing} ${addition}` : addition
+}
 
 // アップロードされたFormDataから 'file' を取り出しレコード配列に変換する
 async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
@@ -70,31 +111,53 @@ function isKnownLegacyDuplicate(r: Pick<AccountAuthInput, 'number'>): boolean {
   return r.number != null && LEGACY_DUPLICATE_NUMBERS.includes(r.number)
 }
 
-// 検証: 必須欠け・ファイル内の「新規」username重複（既知のレガシー重複と一致しないもの）・No.重複。
-// サーバー側 accountAuthDiff.ts の validateImportRecords と同じロジック（preview/apply共通で使う）
-function validateImportRecords(records: AccountAuthInput[]): string[] {
+// 【本物のMD5ではない】ブラウザで動くモック用の簡易版。実際のハッシュ化は
+// サーバー側 server/src/repositories/accountAuth.ts でNode crypto(MD5)を使う。
+// ここでは「平文をそのまま保存しない」という挙動をStorybook上で再現できれば十分
+function fakeHashPassword(plain: string): string {
+  let hash = 0
+  for (let i = 0; i < plain.length; i++) hash = (hash * 31 + plain.charCodeAt(i)) | 0
+  return `mockhash_${(hash >>> 0).toString(16)}`
+}
+
+// 検証: 必須欠け・「新規」username重複（既知のレガシー重複と一致しないもの）・No.重複。
+// サーバー側 accountAuthDiff.ts の validateImportRecords と同じロジック
+// （Excel取り込みpreview/apply・手動追加のcreate・更新update/リストアで共通して使う）。
+// usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）ので、
+// 重複拒否はこの関数だけが担う。existingNumbers/existingUsernames を渡すと
+// 「ファイル内」だけでなく「既存データとの重複」も同じロジックで検知できる。
+// 一意性チェックは「生きている行（delfg=false）同士」でのみ行う（削除済みの
+// No./usernameは再利用可という客先の運用要望のため。詳細はサーバー側参照）
+function validateImportRecords(
+  records: AccountAuthInput[],
+  existingNumbers: ReadonlySet<number> = new Set(),
+  existingUsernames: ReadonlySet<string> = new Set(),
+): string[] {
   const errors: string[] = []
-  const firstSeenLine = new Map<string, number>()
-  const firstSeenNumberLine = new Map<number, number>()
+  const firstSeenLine = new Map<string, string>()
+  const firstSeenNumberLine = new Map<number, string>()
+  for (const n of existingNumbers) firstSeenNumberLine.set(n, '既存データ')
+  for (const u of existingUsernames) firstSeenLine.set(u, '既存データ')
   records.forEach((r, i) => {
     const line = i + 1
     if (!r.username) errors.push(`${line}行目：usernameが空です`)
     if (!r.password) errors.push(`${line}行目：passwordが空です`)
+    if (r.delfg) return
     if (r.number != null) {
       const firstNumber = firstSeenNumberLine.get(r.number)
       if (firstNumber != null) {
-        errors.push(`${line}行目：No.が${firstNumber}行目と重複しています（No.は一意である必要があります）: ${r.number}`)
+        errors.push(`${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}`)
       } else {
-        firstSeenNumberLine.set(r.number, line)
+        firstSeenNumberLine.set(r.number, `${line}行目`)
       }
     }
     if (isKnownLegacyDuplicate(r)) return
     if (r.username) {
       const first = firstSeenLine.get(r.username)
       if (first != null) {
-        errors.push(`${line}行目：usernameが${first}行目と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+        errors.push(`${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}`)
       } else {
-        firstSeenLine.set(r.username, line)
+        firstSeenLine.set(r.username, `${line}行目`)
       }
     }
   })
@@ -122,16 +185,29 @@ export const accountAuthHandlers = [
       // （サーバー側 computeImportDiff と同じ考え方。詳細はそちらのコメント参照）
       const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
       if (!cur) {
-        if (legacy) { skippedDuplicateUsernames.push({ username: r.username, number: r.number }) } else { added.push(r) }
+        // 新規追加はExcelのcomment列を使わず常に空で始める
+        if (legacy) { skippedDuplicateUsernames.push({ username: r.username, number: r.number }) } else { added.push({ ...r, comment: null }) }
         continue
       }
-      if (r.delfg && !cur.delfg) { deleted.push({ username: r.username, before: cur, after: r }); continue }
-      if (!r.delfg && cur.delfg) { restored.push({ username: r.username, before: cur, after: r }); continue }
-      const changedFields = IMPORT_FIELDS.filter(
-        (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
-      )
-      if (changedFields.length) changed.push({ username: r.username, before: cur, after: r, changedFields })
-      else unchangedCount++
+      if (r.delfg && !cur.delfg) {
+        deleted.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
+        continue
+      }
+      if (!r.delfg && cur.delfg) {
+        restored.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
+        continue
+      }
+      // passwordはDBがハッシュ・Excelは平文なので、比較前にハッシュ化する
+      // （サーバー側 accountAuthDiff.ts と同じ理由。単純比較だと常に「変更」扱いになる）
+      const changedFields = IMPORT_FIELDS.filter((f) => {
+        if (f === 'password') return fakeHashPassword(r.password) !== cur.password
+        return (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
+      })
+      if (changedFields.length) {
+        const changeText = buildChangeComment(changedFields, cur, r)
+        const after: AccountAuthInput = { ...r, comment: changeText ? appendComment(cur.comment, changeText) : cur.comment }
+        changed.push({ username: r.username, before: cur, after, changedFields })
+      } else unchangedCount++
     }
     const validationErrors = validateImportRecords(records)
     return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames, validationErrors })
@@ -159,17 +235,37 @@ export const accountAuthHandlers = [
       const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
       if (!cur) {
         if (legacy) continue
-        rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
+        // 新規追加はExcelのcomment列を使わず常に空で始める
+        rows.push({ ...r, password: fakeHashPassword(r.password), comment: null, id: nextId++, reg_date: now(), upd_date: now() })
         inserted++
         continue
       }
-      if (r.delfg && !cur.delfg) { cur.delfg = true; cur.upd_date = now(); deleted++; continue }
-      if (!r.delfg && cur.delfg) { cur.delfg = false; cur.upd_date = now(); restored++; continue }
-      const changedFields = IMPORT_FIELDS.filter(
-        (f) => (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
-      )
+      if (r.delfg && !cur.delfg) {
+        cur.delfg = true
+        cur.comment = appendComment(cur.comment, `${todayStr()} 削除`)
+        cur.upd_date = now()
+        deleted++
+        continue
+      }
+      if (!r.delfg && cur.delfg) {
+        cur.delfg = false
+        cur.comment = appendComment(cur.comment, `${todayStr()} 再登録`)
+        cur.upd_date = now()
+        restored++
+        continue
+      }
+      // passwordはDBがハッシュ・Excelは平文なので、比較前にハッシュ化する
+      // （サーバー側 accountAuthDiff.ts と同じ理由。単純比較だと常に「変更」扱いになる）
+      const changedFields = IMPORT_FIELDS.filter((f) => {
+        if (f === 'password') return fakeHashPassword(r.password) !== cur.password
+        return (r as Record<string, unknown>)[f] !== (cur as unknown as Record<string, unknown>)[f]
+      })
       if (changedFields.length) {
-        Object.assign(cur, r, { upd_date: now() })
+        // Excel取り込みは常に平文パスワードが渡ってくる前提で毎回ハッシュ化する
+        // （手動更新のような「空文字＝維持」の分岐は無い。サーバー側と同じ）
+        const changeText = buildChangeComment(changedFields, cur, r)
+        const comment = changeText ? appendComment(cur.comment, changeText) : cur.comment
+        Object.assign(cur, r, { password: fakeHashPassword(r.password), comment, upd_date: now() })
         updated++
       }
     }
@@ -188,13 +284,15 @@ export const accountAuthHandlers = [
     if (records.length === 0) {
       return HttpResponse.json({ error: 'records（配列）が必要です' }, { status: 400 })
     }
-    for (const r of records) {
-      if (visible().some((x) => x.username === r.username)) {
-        return HttpResponse.json({ error: `UNIQUE constraint failed: ${r.username}` }, { status: 409 })
-      }
+    const alive = rows.filter((r) => !r.delfg)
+    const existingNumbers = new Set(alive.map((r) => r.number).filter((n): n is number => n != null))
+    const existingUsernames = new Set(alive.map((r) => r.username))
+    const errors = validateImportRecords(records, existingNumbers, existingUsernames)
+    if (errors.length > 0) {
+      return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })
     }
     for (const r of records) {
-      rows.push({ ...r, id: nextId++, reg_date: now(), upd_date: now() })
+      rows.push({ ...r, password: fakeHashPassword(r.password), id: nextId++, reg_date: now(), upd_date: now() })
     }
     return HttpResponse.json({ inserted: records.length }, { status: 201 })
   }),
@@ -205,7 +303,22 @@ export const accountAuthHandlers = [
     const input = (await request.json()) as AccountAuthInput
     const idx = rows.findIndex((x) => x.id === id)
     if (idx === -1) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
-    rows[idx] = { ...rows[idx], ...input, id, upd_date: now() }
+    const current = rows[idx]
+    // 空文字＝「パスワードを変更する」チェックOFF（クライアント側の規約）→既存ハッシュを維持
+    const password = input.password.trim() === '' ? current.password : fakeHashPassword(input.password)
+    // 更新後にdelfg=falseになる場合のみ、自分以外の生きているレコードとの重複を検証
+    // （リストアも通常の編集も同じ扱い。検証は「実際に保存される値」で行う。
+    // 詳細はサーバー側 accountAuthController.ts 参照）
+    if (!input.delfg) {
+      const others = rows.filter((r) => r.id !== id && !r.delfg)
+      const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
+      const existingUsernames = new Set(others.map((r) => r.username))
+      const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingUsernames)
+      if (errors.length > 0) {
+        return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })
+      }
+    }
+    rows[idx] = { ...rows[idx], ...input, password, id, upd_date: now() }
     return HttpResponse.json(rows[idx])
   }),
 

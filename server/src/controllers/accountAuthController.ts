@@ -8,6 +8,7 @@ import {
   type AccountAuth,
   type AccountAuthInput,
 } from '../repositories/accountAuth'
+import { validateImportRecords } from '../services/accountAuthDiff'
 
 // 追加リクエストのボディ（手入力1件もExcel複数件も同じ口）
 interface CreateAccountAuthBody {
@@ -34,11 +35,25 @@ export class AccountAuthController extends Controller {
     return listAllAccountAuth()
   }
 
-  /** 追加（1件もExcel複数件も同じ口） */
+  /** 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
+   *  必須項目・No.重複・username重複を弾く。重複は「生きている(delfg=false)
+   *  レコード同士」でのみ判定する（削除済みのNo./usernameは再利用可、という
+   *  客先の運用要望のため）。
+   *  usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
+   *  ので、重複拒否はこのアプリ層の検証が唯一の砦 */
   @Post()
   @SuccessResponse(201, 'Created')
-  @Response<ErrorResponse>(409, 'UNIQUE制約違反など')
+  @Response<ErrorResponse>(400, '検証エラー')
+  @Response<ErrorResponse>(409, '予期しないDBエラー')
   public async create(@Body() body: CreateAccountAuthBody): Promise<{ inserted: number } | ErrorResponse> {
+    const alive = listAllAccountAuth().filter((r) => !r.delfg)
+    const existingNumbers = new Set(alive.map((r) => r.number).filter((n): n is number => n != null))
+    const existingUsernames = new Set(alive.map((r) => r.username))
+    const errors = validateImportRecords(body.records, existingNumbers, existingUsernames)
+    if (errors.length > 0) {
+      this.setStatus(400)
+      return { error: errors.join(' / ') }
+    }
     try {
       const result = createAccountAuth(body.records)
       this.setStatus(201)
@@ -49,10 +64,37 @@ export class AccountAuthController extends Controller {
     }
   }
 
-  /** 更新 */
+  /** 更新（リストア＝delfg: true→falseも含む）。更新後にdelfg=falseになる
+   *  場合のみ、自分以外の生きているレコードとNo./username重複がないか検証する
+   *  （削除済みのままにする更新や、削除する更新は重複を気にしなくてよい）。
+   *  passwordは空文字＝「パスワードを変更する」チェックOFF（クライアント側の
+   *  規約）で、既存ハッシュを維持する（実際のハッシュ化・維持判定はリポジトリ
+   *  層で行う）。ここでは必須チェックが誤爆しないよう、検証にかける値だけ
+   *  「維持される既存ハッシュ」に差し替えておく */
   @Put('{id}')
+  @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(404, '対象が見つかりません')
   public async update(@Path() id: number, @Body() input: AccountAuthInput): Promise<AccountAuth | ErrorResponse> {
+    const all = listAllAccountAuth()
+    const current = all.find((r) => r.id === id)
+    if (!current) {
+      this.setStatus(404)
+      return { error: '対象が見つかりません' }
+    }
+    if (!input.delfg) {
+      const others = all.filter((r) => r.id !== id && !r.delfg)
+      const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
+      const existingUsernames = new Set(others.map((r) => r.username))
+      const recordForValidation: AccountAuthInput = {
+        ...input,
+        password: input.password.trim() === '' ? current.password : input.password,
+      }
+      const errors = validateImportRecords([recordForValidation], existingNumbers, existingUsernames)
+      if (errors.length > 0) {
+        this.setStatus(400)
+        return { error: errors.join(' / ') }
+      }
+    }
     try {
       const updated = updateAccountAuth(id, input)
       if (!updated) {

@@ -31,7 +31,8 @@ type ValidateBody = { message?: string; details?: Record<string, { message: stri
 /**
  * サーバーエラーを「フォーム項目ごとのエラー」に変換する。
  * - 422(tsoa検証): details のキー末尾をフィールド名として拾う
- * - 409(UNIQUE): username 重複として username に紐付け
+ * - 400(必須欠け・No./username重複などのアプリ層検証): フィールドに紐付けられる
+ *   情報を持たないため変換しない。呼び出し側で err.message を全体エラーとして表示する
  * 返り値: { field: message } のマップ（フォームに無いフィールドは呼び出し側で無視）
  */
 export function toFieldErrors(err: unknown): Record<string, string> {
@@ -45,10 +46,6 @@ export function toFieldErrors(err: unknown): Record<string, string> {
       out[field] = val.message
     }
     return out
-  }
-
-  if (err.status === 409) {
-    return { username: 'このユーザー名は既に使われています' }
   }
 
   return {}

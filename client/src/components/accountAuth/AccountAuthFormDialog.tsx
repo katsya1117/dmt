@@ -11,13 +11,17 @@ import Grid from '@mui/material/Grid'
 import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
+import Checkbox from '@mui/material/Checkbox'
 import { RhfTextField } from '../form/RhfTextField'
 import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
 import { toFieldErrors } from '../../api/error'
 
+// passwordは「必須」をZodに持たせない。新規追加時は常に必須・編集時は
+// 「パスワードを変更する」チェックがONの時だけ必須、という状態依存のルール
+// になるため、静的なスキーマでは表現しづらい。submit時に手動でチェックする
 const schema = z.object({
   username: z.string().min(1, 'ユーザー名は必須です'),
-  password: z.string().min(1, 'パスワードは必須です'),
+  password: z.string(),
   comment: z.string(),
   number: z.string(), // 数値テキスト。空→null、値→number に変換
   submission_date: z.string(),
@@ -54,23 +58,36 @@ type Props = {
 // 空文字 → null（書き込み型は null可カラムを `| null` で表現）
 const orNull = (s: string): string | null => (s.trim() === '' ? null : s)
 
+function todayStr(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`
+}
+
 export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSuccess, submitting }: Props) {
-  const { control, handleSubmit, reset, setError } = useForm<FormValues>({
+  const { control, handleSubmit, reset, setError, getValues, setValue } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: empty,
     mode: 'onTouched', // 触った項目から順にリアルタイム検証（世の中の標準的な体感）
   })
   // どのフォーム項目にも紐付かないサーバーエラー（通信断・500等）はここに出す
   const [formError, setFormError] = useState<string | null>(null)
+  // 【delfg用Switchとは別物】DBの永続フィールドではなく、フォームの入力モードを
+  // 切り替えるだけのローカルUI状態。編集時のみ表示。新規追加時は常に実質ON
+  // （パスワード欄が常に必須で出ている）なのでこのstateは編集時にしか使わない
+  const [changePassword, setChangePassword] = useState(!target)
 
   useEffect(() => {
     if (!open) return
     setFormError(null)
+    setChangePassword(!target)
     reset(
       target
         ? {
             username: target.username,
-            password: target.password,
+            // パスワードは空欄で開始する（DBにはハッシュしか無く、元の平文は
+            // 復元できないため）。空欄のまま送信＝既存のハッシュを維持する
+            password: '',
             comment: target.comment ?? '',
             number: target.number != null ? String(target.number) : '',
             submission_date: target.submission_date ?? '',
@@ -91,12 +108,21 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
   // フォーム上のフィールド名（サーバーエラーをこの集合だけ項目に紐付ける）
   const FIELD_NAMES = new Set(Object.keys(empty))
 
+  // 新規追加、または編集で「パスワードを変更する」がONの時だけパスワード必須
+  const passwordRequired = !target || changePassword
+
   const submit = async (v: FormValues) => {
     setFormError(null)
+    if (passwordRequired && v.password.trim() === '') {
+      setError('password', { type: 'manual', message: 'パスワードは必須です' })
+      return
+    }
     try {
       await onSubmit({
         username: v.username,
-        password: v.password,
+        // 編集で「パスワードを変更する」がOFFなら空文字を送る
+        // （サーバー側は空文字を「既存ハッシュを維持」の合図として扱う）
+        password: passwordRequired ? v.password : '',
         comment: orNull(v.comment),
         number: v.number.trim() === '' ? null : Number(v.number),
         submission_date: orNull(v.submission_date),
@@ -134,7 +160,24 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0 }}>
             <Grid size={half}><RhfTextField name="username" control={control} label="ユーザー名" size="small" fullWidth /></Grid>
-            <Grid size={half}><RhfTextField name="password" control={control} label="パスワード" size="small" fullWidth /></Grid>
+            {/* 【Gridアイテム数を常に一定に保つ】チェックボックスと入力欄を別々の
+                Gridアイテムにすると、表示/非表示の切り替えで総数が変わり、
+                以降の項目が半マスずつズレて全体のレイアウトが崩れる。1つの
+                マスの中で縦に積むことで総アイテム数を変えない */}
+            <Grid size={half}>
+              {target && (
+                <FormControlLabel
+                  control={<Checkbox checked={changePassword} onChange={(e) => setChangePassword(e.target.checked)} />}
+                  label="パスワードを変更する"
+                />
+              )}
+              {(!target || changePassword) && (
+                <RhfTextField
+                  name="password" control={control} label={target ? '新しいパスワード' : 'パスワード'}
+                  size="small" fullWidth sx={target ? { mt: 1 } : undefined}
+                />
+              )}
+            </Grid>
             <Grid size={half}><RhfTextField name="number" control={control} label="No." type="number" size="small" fullWidth /></Grid>
             <Grid size={half}>
               <Controller name="non_sync" control={control} render={({ field }) => (
@@ -156,7 +199,15 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
             <Grid size={12}>
               <Controller name="delfg" control={control} render={({ field }) => (
                 <FormControlLabel
-                  control={<Switch color="error" checked={field.value} onChange={(e) => field.onChange(e.target.checked)} />}
+                  control={<Switch color="error" checked={field.value} onChange={(e) => {
+                    const next = e.target.checked
+                    field.onChange(next)
+                    // 削除/リストアの操作内容を備考欄に下書きとして自動追記する
+                    // （あくまで下書き。強制ではなく、送信前に自由に編集・削除できる）
+                    const addition = `${todayStr()} ${next ? '削除' : '再登録'}`
+                    const current = getValues('comment')
+                    setValue('comment', current.trim() === '' ? addition : `${current} ${addition}`)
+                  }} />}
                   label="削除フラグ（ONで論理削除。一覧には残り「状態」列が削除済みになります）"
                 />
               )} />

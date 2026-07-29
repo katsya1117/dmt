@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 import fs from 'fs'
+import { hashPassword } from './utils/hashPassword'
 
 // デモ用ローカルDB。本番ではこの層をPHP(REST)呼び出しに差し替える。
 const dbDir = path.resolve(__dirname, '../data')
@@ -11,10 +12,14 @@ db.pragma('journal_mode = WAL')
 
 // 実スキーマ（客先MySQLのaccount_authに準拠。SQLite向けに型を読み替え）
 // MySQL: tinyint(1)→INTEGER(0/1) / date・datetime・timestamp→TEXT
+// 【usernameにUNIQUE制約は無い】設計時はUNIQUE前提だったが、客先の旧運用で
+// username重複のまま現役利用されているレコードが実在すると判明した
+// （accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS 参照）。重複禁止は
+// DB制約ではなくアプリ層（validateImportRecords）でのみ担保する
 db.exec(`
   CREATE TABLE IF NOT EXISTS account_auth (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-    username                 TEXT NOT NULL UNIQUE,
+    username                 TEXT NOT NULL,
     password                 TEXT NOT NULL,
     comment                  TEXT,
     number                   INTEGER,
@@ -61,7 +66,8 @@ if (count === 0) {
       company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
       non_sync: 0, store_cd: null, store_name: null, reg_date: nowStr, upd_date: nowStr, delfg: 0 },
   ]
-  const tx = db.transaction(() => seed.forEach((r) => insert.run(r)))
+  // シードもリポジトリ層の書き込みと同様、平文を保存しない（客先仕様）
+  const tx = db.transaction(() => seed.forEach((r) => insert.run({ ...r, password: hashPassword(r.password) })))
   tx()
 }
 

@@ -23,7 +23,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
-import { DataGrid, GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, GridActionsCellItem, GridToolbarContainer, GridToolbarColumnsButton, type GridColDef } from '@mui/x-data-grid'
 import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -51,6 +51,17 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
   { key: 'reg_date', label: '登録日時', width: 160 },
   { key: 'upd_date', label: '更新日時', width: 160 },
 ]
+
+// 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
+// 列選択ツールバー（表示/非表示の切り替え）だけを出す。既存の検索欄と
+// 重複するクイックフィルタ等は含めない最小構成のツールバー
+function ColumnsOnlyToolbar() {
+  return (
+    <GridToolbarContainer>
+      <GridToolbarColumnsButton />
+    </GridToolbarContainer>
+  )
+}
 
 export default function AccountAuthTable() {
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
@@ -270,10 +281,21 @@ export default function AccountAuthTable() {
           // デフォルトの100件だけが表示され、UIが無いので気づけない不具合になる
           // （2026-07-14、hideFooter追加時にこの指定を誤って消してしまい発生）。
           // 総件数は下のTypographyで別途表示する
-          initialState={{ pagination: { paginationModel: { pageSize: -1 } } }}
+          initialState={{
+            pagination: { paginationModel: { pageSize: -1 } },
+            // 水平スクロールを減らすため、優先度が低い列はデフォルト非表示。
+            // 列選択ツールバー（下記slots.toolbar）でいつでも表示に戻せる
+            columns: {
+              columnVisibilityModel: {
+                reg_date: false, upd_date: false,
+                company_store_cd: false, company_store_branch_num: false, store_cd: false,
+              },
+            },
+          }}
           pageSizeOptions={[{ value: -1, label: 'すべて' }]}
           hideFooter
           slots={{
+            toolbar: ColumnsOnlyToolbar,
             noRowsOverlay: () => (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 {data?.length === 0 ? 'データがありません' : '該当する行がありません'}

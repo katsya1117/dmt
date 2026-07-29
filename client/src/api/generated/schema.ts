@@ -51,7 +51,14 @@ export interface paths {
         /** @description 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
         get: operations["List"];
         put?: never;
-        /** @description 追加（1件もExcel複数件も同じ口） */
+        /**
+         * @description 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
+         *     必須項目・No.重複・username重複を弾く。重複は「生きている(delfg=false)
+         *     レコード同士」でのみ判定する（削除済みのNo./usernameは再利用可、という
+         *     客先の運用要望のため）。
+         *     usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
+         *     ので、重複拒否はこのアプリ層の検証が唯一の砦
+         */
         post: operations["Create"];
         delete?: never;
         options?: never;
@@ -67,7 +74,15 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** @description 更新 */
+        /**
+         * @description 更新（リストア＝delfg: true→falseも含む）。更新後にdelfg=falseになる
+         *     場合のみ、自分以外の生きているレコードとNo./username重複がないか検証する
+         *     （削除済みのままにする更新や、削除する更新は重複を気にしなくてよい）。
+         *     passwordは空文字＝「パスワードを変更する」チェックOFF（クライアント側の
+         *     規約）で、既存ハッシュを維持する（実際のハッシュ化・維持判定はリポジトリ
+         *     層で行う）。ここでは必須チェックが誤爆しないよう、検証にかける値だけ
+         *     「維持される既存ハッシュ」に差し替えておく
+         */
         put: operations["Update"];
         post?: never;
         delete?: never;
@@ -286,7 +301,16 @@ export interface operations {
                     } | components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description UNIQUE制約違反など */
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 予期しないDBエラー */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -319,6 +343,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountAuth"] | components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description 対象が見つかりません */

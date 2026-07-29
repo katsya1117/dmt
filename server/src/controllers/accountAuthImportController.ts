@@ -50,8 +50,8 @@ export class AccountAuthImportController extends Controller {
     return applyAccountAuthImport({
       added: diff.added,
       changed: diff.changed.map((c) => ({ id: c.before.id, after: c.after })),
-      deleted: diff.deleted.map((d) => ({ id: d.before.id })),
-      restored: diff.restored.map((r) => ({ id: r.before.id })),
+      deleted: diff.deleted.map((d) => ({ id: d.before.id, comment: d.after.comment ?? '' })),
+      restored: diff.restored.map((r) => ({ id: r.before.id, comment: r.after.comment ?? '' })),
     })
   }
 }

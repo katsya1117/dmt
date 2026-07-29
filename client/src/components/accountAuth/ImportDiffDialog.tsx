@@ -7,7 +7,8 @@ import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
-import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import Tooltip from '@mui/material/Tooltip'
+import { DataGrid, GridToolbarContainer, GridToolbarColumnsButton, type GridColDef } from '@mui/x-data-grid'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import { AUTH_CRITICAL_FIELDS } from '../../api/accountAuthImport'
 import type { AccountAuthInput } from '../../api/accountAuth'
@@ -48,6 +49,16 @@ const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) 
 
 type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
 
+// 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
+// 列選択ツールバー（表示/非表示の切り替え）だけを出す最小構成
+function ColumnsOnlyToolbar() {
+  return (
+    <GridToolbarContainer>
+      <GridToolbarColumnsButton />
+    </GridToolbarContainer>
+  )
+}
+
 export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
   const hasValidationErrors = !!diff?.validationErrors.length
@@ -69,30 +80,41 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
       sortable: false,
       renderCell: (params) => <Chip size="small" label={params.row.kind} color={KIND_COLOR[params.row.kind]} />,
     },
-    ...COLS.map((c): GridColDef<Row> => ({
-      field: c.key,
-      headerName: c.label,
-      width: 140,
-      sortable: false,
-      valueGetter: (_value, row) => row.record[c.key],
-      renderCell: (params) => {
-        const v = params.row.record[c.key]
-        const isChanged = params.row.changedFields.includes(c.key)
-        const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
-        const display = c.format ? c.format(v) : (v === null || v === undefined || v === '' ? '—' : String(v))
-        return (
-          <Box
-            component="span"
-            sx={{
-              fontWeight: isChanged ? 700 : 400,
-              color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
-            }}
-          >
-            {isCritical && '★'}{display}
-          </Box>
-        )
-      },
-    })),
+    ...COLS.map((c): GridColDef<Row> => {
+      // 備考は運用担当者の手入力＋自動追記で長くなりがちなので、固定幅で
+      // 切り詰めず残りの横幅いっぱいまで伸ばす（それでも切れる場合はホバーで全文表示）
+      const isComment = c.key === 'comment'
+      return {
+        field: c.key,
+        headerName: c.label,
+        ...(isComment ? { flex: 1, minWidth: 220 } : { width: 140 }),
+        sortable: false,
+        valueGetter: (_value, row) => row.record[c.key],
+        renderCell: (params) => {
+          const v = params.row.record[c.key]
+          const isChanged = params.row.changedFields.includes(c.key)
+          const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
+          const display = c.format ? c.format(v) : (v === null || v === undefined || v === '' ? '—' : String(v))
+          const content = (
+            <Box
+              component="span"
+              sx={{
+                fontWeight: isChanged ? 700 : 400,
+                color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
+                ...(isComment ? { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}),
+              }}
+            >
+              {isCritical && '★'}{display}
+            </Box>
+          )
+          return isComment ? (
+            <Tooltip title={display} placement="bottom-start">
+              <span style={{ display: 'block', width: '100%', overflow: 'hidden' }}>{content}</span>
+            </Tooltip>
+          ) : content
+        },
+      }
+    }),
   ]
 
   return (
@@ -111,9 +133,20 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
             // 承認前レビューなので、ページ送りで見落とすリスクを避けるため
             // 常に全件を1ページで表示する（仮想化は独立して効くため性能は
             // 変わらない。詳細は AccountAuthTable.tsx の同種コメント参照）
-            initialState={{ pagination: { paginationModel: { pageSize: -1 } } }}
+            initialState={{
+              pagination: { paginationModel: { pageSize: -1 } },
+              // 水平スクロールを減らすため、優先度が低い列はデフォルト非表示。
+              // 列選択ツールバー（下記slots.toolbar）でいつでも表示に戻せる
+              columns: {
+                columnVisibilityModel: {
+                  submission_date: false, regist_date: false,
+                  company_store_cd: false, company_store_branch_num: false, store_cd: false,
+                },
+              },
+            }}
             pageSizeOptions={[{ value: -1, label: 'すべて' }]}
             slots={{
+              toolbar: ColumnsOnlyToolbar,
               noRowsOverlay: () => (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   変更はありません
