@@ -14,21 +14,25 @@ import { parseAccountAuthExcel } from '../components/accountAuth/parseExcel'
 
 const ts = '2026-07-01 09:00:00'
 
+// 【パスワードはハッシュ済みの値で持つ】実サーバー(server/src/db.ts)のシードも
+// 平文を保存しないよう修正済みのため、モックのシードも平文(pw-001等)を直書き
+// せずfakeHashPasswordを通す。画面に平文パスワードが一切表示されないという
+// 実際の挙動をStorybookでも再現するため
 const initialRows: AccountAuth[] = [
   {
-    id: 1, username: 'dealer001', password: 'pw-001', comment: '東日本エリア', number: 1001,
+    id: 1, username: 'dealer001', password: fakeHashPassword('pw-001'), comment: '東日本エリア', number: 1001,
     submission_date: '2024-04-01', regist_date: '2024-04-05',
     company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
     non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
   },
   {
-    id: 2, username: 'dealer002', password: 'pw-002', comment: null, number: 1002,
+    id: 2, username: 'dealer002', password: fakeHashPassword('pw-002'), comment: null, number: 1002,
     submission_date: '2024-05-10', regist_date: '2024-05-12',
     company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
     non_sync: true, store_cd: 'S002', store_name: '仙台駅前店', reg_date: ts, upd_date: ts, delfg: false,
   },
   {
-    id: 3, username: 'admin-honsha', password: 'pw-adm', comment: '本社管理', number: 9001,
+    id: 3, username: 'admin-honsha', password: fakeHashPassword('pw-adm'), comment: '本社管理', number: 9001,
     submission_date: null, regist_date: '2023-01-01',
     company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
     non_sync: false, store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg: false,

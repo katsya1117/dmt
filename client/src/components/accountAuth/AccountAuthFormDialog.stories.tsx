@@ -4,8 +4,11 @@ import Button from '@mui/material/Button'
 import { AccountAuthFormDialog } from './AccountAuthFormDialog'
 import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
 
+// passwordは実際にはMD5ハッシュが入る（サーバーは平文を保存しない）。
+// フォームは編集時にpasswordを空欄で始める設計なのでこの値自体は画面に出ないが、
+// AccountAuth型の実態（ハッシュ済み文字列）に合わせておく
 const sampleRow: AccountAuth = {
-  id: 2, username: 'dealer002', password: 'pw-002', comment: null, number: 1002,
+  id: 2, username: 'dealer002', password: 'e10adc3949ba59abbe56e057f20f883e', comment: null, number: 1002,
   submission_date: '2024-05-10', regist_date: '2024-05-12',
   company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
   non_sync: true, store_cd: 'S002', store_name: '仙台駅前店',

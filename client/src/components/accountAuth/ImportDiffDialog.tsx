@@ -145,6 +145,7 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
               },
             }}
             pageSizeOptions={[{ value: -1, label: 'すべて' }]}
+            showToolbar
             slots={{
               toolbar: ColumnsOnlyToolbar,
               noRowsOverlay: () => (

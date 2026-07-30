@@ -294,6 +294,7 @@ export default function AccountAuthTable() {
           }}
           pageSizeOptions={[{ value: -1, label: 'すべて' }]}
           hideFooter
+          showToolbar
           slots={{
             toolbar: ColumnsOnlyToolbar,
             noRowsOverlay: () => (

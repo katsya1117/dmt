@@ -163,6 +163,21 @@ const theme = createTheme({
         },
       },
     },
+    // 【Switchが白背景に同化する問題への対処】原因は上のshadows配列を全体的に
+    // 薄く上書きしたことで、Switchのthumbの既定シャドウ(theme.shadows[1]依存)まで
+    // 薄くなってしまったため。thumbに固定のシャドウを与え、OFF時のtrackも
+    // 既定の低opacityのままだと白背景でほぼ見えないので不透明な色を明示する
+    MuiSwitch: {
+      styleOverrides: {
+        track: {
+          opacity: 1,
+          backgroundColor: '#cbd5e1', // slate-300
+        },
+        thumb: {
+          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px 0 rgb(0 0 0 / 0.2)',
+        },
+      },
+    },
   },
 })
 
