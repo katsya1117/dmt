@@ -304,9 +304,11 @@ export default function AccountAuthTable() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      {/* テーブルとその操作UIを1枚のパネルに一体化する。外側のBoxが枠線・角丸を
-          持ち、上部の操作バー（区切り線付き）とDataGrid（枠線なし）を内包する
-          ことで、列表示制御がテーブルの一部だと視覚的に伝わる（2026-08-05） */}
+      {/* テーブルと操作UIを1枚のパネルに一体化する。ポイントは「別の帯を足さない」
+          こと。ツールバー strip と DataGrid の列ヘッダーを同じトーン（slate-100）で
+          塗り、両者の間に境界を引かないことで、操作行と列ヘッダーが1つの
+          「ヘッド領域」として地続きに見える。区切り線はヘッドと行の間にだけ入る
+          （テーマの MuiTableHead と同じ slate-100 を使用）（2026-08-05） */}
       <Box
         sx={{
           height: '70vh',
@@ -322,18 +324,14 @@ export default function AccountAuthTable() {
           direction="row"
           justifyContent="flex-end"
           alignItems="center"
-          sx={{
-            px: 1,
-            py: 0.5,
-            borderBottom: 1,
-            borderColor: 'divider',
-            bgcolor: 'action.hover',
-          }}
+          sx={{ px: 1, py: 0.25, bgcolor: 'grey.100' }}
         >
           <Button
             size="small"
+            color="inherit"
             startIcon={<ViewColumnIcon fontSize="small" />}
             onClick={openColumnsPanel}
+            sx={{ color: 'text.secondary', fontWeight: 500 }}
           >
             表示する列
           </Button>
@@ -349,6 +347,8 @@ export default function AccountAuthTable() {
             flex: 1,
             border: 0,
             borderRadius: 0,
+            // 列ヘッダーをツールバーと同じ slate-100 にして地続きに見せる
+            '--DataGrid-containerBackground': (t) => t.palette.grey[100],
             '& .account-auth-deleted-row': { opacity: 0.6 },
             '& .MuiDataGrid-row': { cursor: 'pointer' },
           }}
