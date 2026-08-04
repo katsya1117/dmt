@@ -1,7 +1,7 @@
 import { useForm, Controller, type Path } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
@@ -47,6 +47,9 @@ type Props = {
   open: boolean
   /** 編集対象。null なら新規追加 */
   target: AccountAuth | null
+  /** 新規追加時にNo.欄へ初期値として提案する値（過去の最大No.+1）。あくまで
+   *  下書きで自動採番ではない。ユーザーは自由に上書きできる */
+  suggestedNumber?: number
   onClose: () => void
   /** 送信。失敗時は ApiError を throw する想定（フィールドエラー紐付けのため await する） */
   onSubmit: (input: AccountAuthInput) => Promise<void>
@@ -64,7 +67,7 @@ function todayStr(): string {
   return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`
 }
 
-export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSuccess, submitting }: Props) {
+export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, onSubmit, onSuccess, submitting }: Props) {
   const { control, handleSubmit, reset, setError, getValues, setValue } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: empty,
@@ -76,11 +79,16 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
   // 切り替えるだけのローカルUI状態。編集時のみ表示。新規追加時は常に実質ON
   // （パスワード欄が常に必須で出ている）なのでこのstateは編集時にしか使わない
   const [changePassword, setChangePassword] = useState(!target)
+  // 削除フラグSwitchの下書き自動追記が、このセッションで最後に挿入した文字列。
+  // 何度もON/OFFを切り替えても備考に下書きが何個も積み重ならないよう、次の
+  // 切り替え時にこれと同じ文字列が末尾にあれば取り除いてから新しい下書きを足す
+  const lastAutoComment = useRef<string | null>(null)
 
   useEffect(() => {
     if (!open) return
     setFormError(null)
     setChangePassword(!target)
+    lastAutoComment.current = null
     reset(
       target
         ? {
@@ -101,9 +109,9 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
             store_name: target.store_name ?? '',
             delfg: target.delfg,
           }
-        : empty
+        : { ...empty, number: suggestedNumber != null ? String(suggestedNumber) : '' }
     )
-  }, [open, target, reset])
+  }, [open, target, suggestedNumber, reset])
 
   // フォーム上のフィールド名（サーバーエラーをこの集合だけ項目に紐付ける）
   const FIELD_NAMES = new Set(Object.keys(empty))
@@ -159,33 +167,29 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
         <DialogContent>
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0 }}>
+            <Grid size={12}><RhfTextField name="number" control={control} label="No." type="number" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="username" control={control} label="ユーザー名" size="small" fullWidth /></Grid>
-            {/* 【Gridアイテム数を常に一定に保つ】チェックボックスと入力欄を別々の
-                Gridアイテムにすると、表示/非表示の切り替えで総数が変わり、
-                以降の項目が半マスずつズレて全体のレイアウトが崩れる。1つの
-                マスの中で縦に積むことで総アイテム数を変えない */}
+            {/* 【パスワード欄は常にマウントしたまま、disabledだけ切り替える】
+                「パスワードを変更する」チェックのON/OFFで入力欄ごと出し入れすると、
+                マスの高さが変わって以降の項目がガタつく（チラつく）。欄自体は
+                常に存在させ、編集時にOFFの間はdisabledにするだけでレイアウトの
+                高さを一定に保つ */}
             <Grid size={half}>
               {target && (
                 <FormControlLabel
-                  control={<Checkbox checked={changePassword} onChange={(e) => setChangePassword(e.target.checked)} />}
+                  control={<Checkbox checked={changePassword} onChange={(e) => {
+                    const checked = e.target.checked
+                    setChangePassword(checked)
+                    if (!checked) setValue('password', '')
+                  }} />}
                   label="パスワードを変更する"
                 />
               )}
-              {(!target || changePassword) && (
-                <RhfTextField
-                  name="password" control={control} label={target ? '新しいパスワード' : 'パスワード'}
-                  size="small" fullWidth sx={target ? { mt: 1 } : undefined}
-                />
-              )}
-            </Grid>
-            <Grid size={half}><RhfTextField name="number" control={control} label="No." type="number" size="small" fullWidth /></Grid>
-            <Grid size={half}>
-              <Controller name="non_sync" control={control} render={({ field }) => (
-                <FormControlLabel
-                  control={<Switch checked={field.value} onChange={(e) => field.onChange(e.target.checked)} />}
-                  label="診断データ対象外"
-                />
-              )} />
+              <RhfTextField
+                name="password" control={control} label={target ? '新しいパスワード' : 'パスワード'}
+                size="small" fullWidth disabled={!!target && !changePassword}
+                sx={target ? { mt: 1 } : undefined}
+              />
             </Grid>
             <Grid size={half}><RhfTextField name="submission_date" control={control} label="申込日" type="date" size="small" fullWidth slotProps={shrink} /></Grid>
             <Grid size={half}><RhfTextField name="regist_date" control={control} label="登録日" type="date" size="small" fullWidth slotProps={shrink} /></Grid>
@@ -196,6 +200,15 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
             <Grid size={half}><RhfTextField name="store_cd" control={control} label="販売店CD" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_name" control={control} label="販売店名" size="small" fullWidth /></Grid>
             <Grid size={12}><RhfTextField name="comment" control={control} label="備考" size="small" fullWidth multiline minRows={2} /></Grid>
+            {/* スイッチ2つ（診断データ対象外・削除フラグ）は最下部にまとめる */}
+            <Grid size={12}>
+              <Controller name="non_sync" control={control} render={({ field }) => (
+                <FormControlLabel
+                  control={<Switch checked={field.value} onChange={(e) => field.onChange(e.target.checked)} />}
+                  label="診断データ対象外"
+                />
+              )} />
+            </Grid>
             <Grid size={12}>
               <Controller name="delfg" control={control} render={({ field }) => (
                 <FormControlLabel
@@ -203,10 +216,26 @@ export function AccountAuthFormDialog({ open, target, onClose, onSubmit, onSucce
                     const next = e.target.checked
                     field.onChange(next)
                     // 削除/リストアの操作内容を備考欄に下書きとして自動追記する
-                    // （あくまで下書き。強制ではなく、送信前に自由に編集・削除できる）
-                    const addition = `${todayStr()} ${next ? '削除' : '再登録'}`
-                    const current = getValues('comment')
-                    setValue('comment', current.trim() === '' ? addition : `${current} ${addition}`)
+                    // （あくまで下書き。強制ではなく、送信前に自由に編集・削除できる）。
+                    // 【編集セッション開始時点の値との比較で判定する】前回の切り替え
+                    // 先ではなく、ダイアログを開いた時点（＝DBの現在値）と比べて実際に
+                    // 差分があるかどうかで下書きの要否を決める。例えば元がfalseの状態で
+                    // true→falseと元に戻した場合、DBに対しては何も変わっていないので
+                    // 「再登録」の下書きは不要（このロジックにより自動で消える）
+                    const original = target?.delfg ?? false
+                    let base = getValues('comment')
+                    if (lastAutoComment.current) {
+                      const suffix = ` ${lastAutoComment.current}`
+                      if (base.endsWith(suffix)) base = base.slice(0, -suffix.length)
+                      else if (base === lastAutoComment.current) base = ''
+                      lastAutoComment.current = null
+                    }
+                    if (next !== original) {
+                      const addition = `${todayStr()} ${next ? '削除' : '再登録'}`
+                      lastAutoComment.current = addition
+                      base = base.trim() === '' ? addition : `${base} ${addition}`
+                    }
+                    setValue('comment', base)
                   }} />}
                   label="削除フラグ（ONで論理削除。一覧には残り「状態」列が削除済みになります）"
                 />

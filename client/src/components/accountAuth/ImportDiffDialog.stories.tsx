@@ -63,7 +63,6 @@ const sampleDiff: ImportDiff = {
     },
   ],
   unchangedCount: 3,
-  skippedDuplicateUsernames: [],
   validationErrors: [],
 }
 
@@ -107,7 +106,7 @@ export const NoChanges: Story = {
   args: {
     diff: {
       added: [], changed: [], deleted: [], restored: [],
-      unchangedCount: 5, skippedDuplicateUsernames: [], validationErrors: [],
+      unchangedCount: 5, validationErrors: [],
     },
   },
 }

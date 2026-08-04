@@ -55,8 +55,8 @@ const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 // 確認されたため復活させた（詳細はdocs/アカウント認証_Excel取り込み設計.md）。
 //
 // この番号の行は最初からデータとして取り込まない（No.ハードコード方式。
-// LEGACY_DUPLICATE_NUMBERSと同じ考え方：内容の文字列判定ではなく明示的な
-// リストにすることで、想定外のデータを誤って除外/混入させない）。
+// 内容の文字列判定ではなく明示的なリストにすることで、想定外のデータを
+// 誤って除外/混入させない）。
 //
 // 更新方法：コードではなく server/src/data/accountAuthExcelKnownNumbers.json の
 // kessabanNumbers配列に対象No.を追加/削除するだけでよい（実行環境ごとに変わる

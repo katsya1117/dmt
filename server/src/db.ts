@@ -13,9 +13,8 @@ db.pragma('journal_mode = WAL')
 // 実スキーマ（客先MySQLのaccount_authに準拠。SQLite向けに型を読み替え）
 // MySQL: tinyint(1)→INTEGER(0/1) / date・datetime・timestamp→TEXT
 // 【usernameにUNIQUE制約は無い】設計時はUNIQUE前提だったが、客先の旧運用で
-// username重複のまま現役利用されているレコードが実在すると判明した
-// （accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS 参照）。重複禁止は
-// DB制約ではなくアプリ層（validateImportRecords）でのみ担保する
+// username重複のまま現役利用されているレコードが実在すると判明した。
+// 重複禁止はDB制約ではなくアプリ層（validateImportRecords）でのみ担保する
 db.exec(`
   CREATE TABLE IF NOT EXISTS account_auth (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -8,7 +8,8 @@ import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
-import { DataGrid, GridToolbarContainer, GridToolbarColumnsButton, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, Toolbar, ColumnsPanelTrigger, type GridColDef } from '@mui/x-data-grid'
+import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import { AUTH_CRITICAL_FIELDS } from '../../api/accountAuthImport'
 import type { AccountAuthInput } from '../../api/accountAuth'
@@ -50,12 +51,16 @@ const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) 
 type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
 
 // 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
-// 列選択ツールバー（表示/非表示の切り替え）だけを出す最小構成
+// 列選択ツールバー（表示/非表示の切り替え）だけを出す最小構成。
+// 【GridToolbarContainer/GridToolbarColumnsButtonは非推奨】v8で Toolbar /
+// ColumnsPanelTrigger に置き換わった（将来のメジャーバージョンで削除予定のため）
 function ColumnsOnlyToolbar() {
   return (
-    <GridToolbarContainer>
-      <GridToolbarColumnsButton />
-    </GridToolbarContainer>
+    <Toolbar>
+      <ColumnsPanelTrigger render={<Button size="small" startIcon={<ViewColumnIcon fontSize="small" />} />}>
+        列
+      </ColumnsPanelTrigger>
+    </Toolbar>
   )
 }
 
@@ -165,12 +170,6 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
             <Box component="ul" sx={{ m: 0, pl: 3 }}>
               {diff.validationErrors.map((e) => <li key={e}>{e}</li>)}
             </Box>
-          </Alert>
-        )}
-        {!!diff?.skippedDuplicateUsernames.length && (
-          <Alert severity="warning" sx={{ mt: 1 }}>
-            以下は既知の重複登録（客先の旧運用によるもの）ですが、対応するNo.のレコードがDBに見つからなかったため変更していません。データ不整合の可能性があるため確認してください（{diff.skippedDuplicateUsernames.length}件）:{' '}
-            {diff.skippedDuplicateUsernames.map((s) => `${s.username}（No.${s.number ?? '—'}）`).join('、')}
           </Alert>
         )}
       </DialogContent>

@@ -5,7 +5,6 @@
 // └─────────────────────────────────────────────────────────────┘
 import { http, HttpResponse, delay } from 'msw'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
-import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
 // 本番の取り込みはサーバー側パースに一本化した（server/src/services/
 // parseAccountAuthExcel.ts 参照）が、MSWはブラウザのfetch/axiosを横取り
 // するだけで実サーバーは立たないため、モック内ではこのクライアント側
@@ -105,16 +104,6 @@ async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
   return parseAccountAuthExcel(file)
 }
 
-// 客先の旧運用によるusername重複の既知レコード（No.で特定）。
-// サーバー側 server/src/services/accountAuthDiff.ts の LEGACY_DUPLICATE_NUMBERS と同等。
-// この配列はserver/src/data/accountAuthExcelKnownNumbers.jsonの鏡（MSWモック用）。
-// 更新する時は両方揃えること
-const LEGACY_DUPLICATE_NUMBERS: readonly number[] = knownNumbers.legacyDuplicateNumbers
-
-function isKnownLegacyDuplicate(r: Pick<AccountAuthInput, 'number'>): boolean {
-  return r.number != null && LEGACY_DUPLICATE_NUMBERS.includes(r.number)
-}
-
 // 【本物のMD5ではない】ブラウザで動くモック用の簡易版。実際のハッシュ化は
 // サーバー側 server/src/repositories/accountAuth.ts でNode crypto(MD5)を使う。
 // ここでは「平文をそのまま保存しない」という挙動をStorybook上で再現できれば十分
@@ -124,14 +113,16 @@ function fakeHashPassword(plain: string): string {
   return `mockhash_${(hash >>> 0).toString(16)}`
 }
 
-// 検証: 必須欠け・「新規」username重複（既知のレガシー重複と一致しないもの）・No.重複。
+// 検証: 必須欠け・「新規」username重複・No.重複。
 // サーバー側 accountAuthDiff.ts の validateImportRecords と同じロジック
 // （Excel取り込みpreview/apply・手動追加のcreate・更新update/リストアで共通して使う）。
 // usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）ので、
 // 重複拒否はこの関数だけが担う。existingNumbers/existingUsernames を渡すと
 // 「ファイル内」だけでなく「既存データとの重複」も同じロジックで検知できる。
-// 一意性チェックは「生きている行（delfg=false）同士」でのみ行う（削除済みの
-// No./usernameは再利用可という客先の運用要望のため。詳細はサーバー側参照）
+// 【No.とusernameで一意性チェックの範囲が異なる】No.は削除済み含む全レコード
+// で一意性を見る（過去に使われたNo.の再利用を防ぐ）。usernameは「生きている
+// 行（delfg=false）同士」でのみ行う（削除済みのusernameは再利用可という
+// 客先の運用要望のため）。詳細はサーバー側参照
 function validateImportRecords(
   records: AccountAuthInput[],
   existingNumbers: ReadonlySet<number> = new Set(),
@@ -146,7 +137,7 @@ function validateImportRecords(
     const line = i + 1
     if (!r.username) errors.push(`${line}行目：usernameが空です`)
     if (!r.password) errors.push(`${line}行目：passwordが空です`)
-    if (r.delfg) return
+    // No.は削除済み行も含めて常にチェックする
     if (r.number != null) {
       const firstNumber = firstSeenNumberLine.get(r.number)
       if (firstNumber != null) {
@@ -155,7 +146,8 @@ function validateImportRecords(
         firstSeenNumberLine.set(r.number, `${line}行目`)
       }
     }
-    if (isKnownLegacyDuplicate(r)) return
+    // username重複チェックだけは削除済み行を対象外にする
+    if (r.delfg) return
     if (r.username) {
       const first = firstSeenLine.get(r.username)
       if (first != null) {
@@ -174,23 +166,16 @@ export const accountAuthHandlers = [
     await delay(150)
     const records = await extractRecords(request)
     const byUsername = new Map(rows.map((r) => [r.username, r] as const))
-    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     const added: AccountAuthInput[] = []
     const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
     const deleted: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
     const restored: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
     let unchangedCount = 0
-    // usernameでdedupしない：同じusernameで複数のNo.が未マッチになりうるため、
-    // No.（本来の一意キー）ごとにそのまま記録する（サーバー側と同じ考え方）
-    const skippedDuplicateUsernames: { username: string; number: number | null }[] = []
     for (const r of records) {
-      const legacy = isKnownLegacyDuplicate(r)
-      // 既知のレガシー重複はusernameでは一意特定できないためNo.で照合する
-      // （サーバー側 computeImportDiff と同じ考え方。詳細はそちらのコメント参照）
-      const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
+      const cur = byUsername.get(r.username)
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
-        if (legacy) { skippedDuplicateUsernames.push({ username: r.username, number: r.number }) } else { added.push({ ...r, comment: null }) }
+        added.push({ ...r, comment: null })
         continue
       }
       if (r.delfg && !cur.delfg) {
@@ -214,7 +199,7 @@ export const accountAuthHandlers = [
       } else unchangedCount++
     }
     const validationErrors = validateImportRecords(records)
-    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, skippedDuplicateUsernames, validationErrors })
+    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, validationErrors })
   }),
 
   // 適用（承認後）。preview と同じ突合ロジックで反映する
@@ -228,17 +213,13 @@ export const accountAuthHandlers = [
     }
 
     const byUsername = new Map(rows.map((r) => [r.username, r] as const))
-    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     let inserted = 0
     let updated = 0
     let deleted = 0
     let restored = 0
     for (const r of records) {
-      const legacy = isKnownLegacyDuplicate(r)
-      // 既知のレガシー重複はNo.でDB行を特定する（見つからなければ触らずスキップ）
-      const cur = legacy ? (r.number != null ? byNumber.get(r.number) : undefined) : byUsername.get(r.username)
+      const cur = byUsername.get(r.username)
       if (!cur) {
-        if (legacy) continue
         // 新規追加はExcelのcomment列を使わず常に空で始める
         rows.push({ ...r, password: fakeHashPassword(r.password), comment: null, id: nextId++, reg_date: now(), upd_date: now() })
         inserted++
@@ -288,9 +269,8 @@ export const accountAuthHandlers = [
     if (records.length === 0) {
       return HttpResponse.json({ error: 'records（配列）が必要です' }, { status: 400 })
     }
-    const alive = rows.filter((r) => !r.delfg)
-    const existingNumbers = new Set(alive.map((r) => r.number).filter((n): n is number => n != null))
-    const existingUsernames = new Set(alive.map((r) => r.username))
+    const existingNumbers = new Set(rows.map((r) => r.number).filter((n): n is number => n != null))
+    const existingUsernames = new Set(rows.filter((r) => !r.delfg).map((r) => r.username))
     const errors = validateImportRecords(records, existingNumbers, existingUsernames)
     if (errors.length > 0) {
       return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })
@@ -314,9 +294,9 @@ export const accountAuthHandlers = [
     // （リストアも通常の編集も同じ扱い。検証は「実際に保存される値」で行う。
     // 詳細はサーバー側 accountAuthController.ts 参照）
     if (!input.delfg) {
-      const others = rows.filter((r) => r.id !== id && !r.delfg)
+      const others = rows.filter((r) => r.id !== id)
       const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
-      const existingUsernames = new Set(others.map((r) => r.username))
+      const existingUsernames = new Set(others.filter((r) => !r.delfg).map((r) => r.username))
       const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingUsernames)
       if (errors.length > 0) {
         return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })

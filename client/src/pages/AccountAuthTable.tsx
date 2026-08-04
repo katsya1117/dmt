@@ -18,15 +18,17 @@ import TextField from '@mui/material/TextField'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
+import Tooltip from '@mui/material/Tooltip'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
-import { DataGrid, GridActionsCellItem, GridToolbarContainer, GridToolbarColumnsButton, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, GridActionsCellItem, Toolbar, ColumnsPanelTrigger, type GridColDef } from '@mui/x-data-grid'
 import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
+import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { accountAuthApi } from '../store/services/accountAuthApi'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
@@ -54,12 +56,16 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
 
 // 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
 // 列選択ツールバー（表示/非表示の切り替え）だけを出す。既存の検索欄と
-// 重複するクイックフィルタ等は含めない最小構成のツールバー
+// 重複するクイックフィルタ等は含めない最小構成のツールバー。
+// 【GridToolbarContainer/GridToolbarColumnsButtonは非推奨】v8で Toolbar /
+// ColumnsPanelTrigger に置き換わった（将来のメジャーバージョンで削除予定のため）
 function ColumnsOnlyToolbar() {
   return (
-    <GridToolbarContainer>
-      <GridToolbarColumnsButton />
-    </GridToolbarContainer>
+    <Toolbar>
+      <ColumnsPanelTrigger render={<Button size="small" startIcon={<ViewColumnIcon fontSize="small" />} />}>
+        列
+      </ColumnsPanelTrigger>
+    </Toolbar>
   )
 }
 
@@ -110,6 +116,15 @@ export default function AccountAuthTable() {
   // マスタ全件など大量の変更を誤って流し込む事故を防ぐための確認閾値
   const APPLY_CONFIRM_THRESHOLD = 50
 
+  // 新規追加時のNo.初期値（提案）。過去に使われたNo.（削除済み含む全件）の
+  // 最大値+1を提案する。削除済みのNo.は再利用可能というルールだが、それでも
+  // 「一度でも使われた番号」を再提案すると紛らわしいため、あえて削除済みも
+  // 含めて最大値を取る。あくまで初期値であり、ユーザーは自由に変更できる
+  const suggestedNumber = useMemo(() => {
+    const max = data?.reduce((m, r) => (r.number != null && r.number > m ? r.number : m), 0) ?? 0
+    return max + 1
+  }, [data])
+
   const handlePreviewFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -154,13 +169,25 @@ export default function AccountAuthTable() {
   // 依存配列を空にでき、openEditの参照が変わらない（下のcolumnsのuseMemoが効くために必要）
   const openEdit = useCallback((row: AccountAuth) => { setEditTarget(row); setDialogOpen(true) }, [])
 
-  // 送信はPromiseを返す（失敗はthrowされ、ダイアログがフィールドエラーに紐付ける）
-  const handleSubmit = async (input: AccountAuthInput) => {
-    if (editTarget) {
-      await update({ id: editTarget.id, input }).unwrap()
-    } else {
-      await create([input]).unwrap()
-    }
+  // 送信はPromiseを返す（失敗はthrowされ、ダイアログがフィールドエラーに紐付ける）。
+  // 手動追加・編集は必ず確認ダイアログを一枚挟んでから実行する（Excel取り込みの
+  // 適用と同じconfirmStateの仕組みを流用）。「キャンセル」を押した場合はこの
+  // Promiseを解決させず、フォームダイアログを開いたまま何も起きないようにする
+  // （AccountAuthFormDialog側はawaitしたまま止まるだけで、閉じたりエラー表示は
+  // されない。フォームは編集可能なまま残る）
+  const handleSubmit = (input: AccountAuthInput): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const message = editTarget
+        ? `「${input.username}」の内容を更新します。よろしいですか？`
+        : `「${input.username}」を追加します。よろしいですか？`
+      setConfirmState({
+        message,
+        onConfirm: () => {
+          const action = editTarget ? update({ id: editTarget.id, input }).unwrap() : create([input]).unwrap()
+          action.then(() => resolve()).catch((e) => reject(e))
+        },
+      })
+    })
   }
 
   // 送信成功時：ダイアログを閉じてトースト
@@ -189,12 +216,31 @@ export default function AccountAuthTable() {
   // 固定化前は検索欄を1文字打つたびにcolumns配列が丸ごと作り直され、DataGridが
   // 「列定義が変わった」と判断して余分な再構築コストを払っていた）
   const columns: GridColDef<AccountAuth>[] = useMemo(() => [
-    ...TEXT_COLS.map((c): GridColDef<AccountAuth> => ({
-      field: c.key,
-      headerName: c.label,
-      width: c.width,
-      valueFormatter: (value) => (value === null || value === undefined ? '—' : value),
-    })),
+    ...TEXT_COLS.map((c): GridColDef<AccountAuth> => {
+      // 備考はrenderCellを指定しないとDataGridがセルにネイティブのtitle属性を
+      // 付け、ブラウザ標準の飾り気のないツールチップになってしまう
+      // （運用担当者の手入力＋自動追記で長くなりがちで最も溢れやすい列）。
+      // ImportDiffDialog.tsxの備考列と同じくMUIのTooltipで統一する
+      const isComment = c.key === 'comment'
+      return {
+        field: c.key,
+        headerName: c.label,
+        width: c.width,
+        valueFormatter: (value) => (value === null || value === undefined ? '—' : value),
+        ...(isComment ? {
+          renderCell: (params) => {
+            const display = String(params.formattedValue ?? '—')
+            return (
+              <Tooltip title={display} placement="bottom-start">
+                <span style={{ display: 'block', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {display}
+                </span>
+              </Tooltip>
+            )
+          },
+        } : {}),
+      }
+    }),
     {
       field: 'non_sync',
       headerName: '診断対象外',
@@ -313,6 +359,7 @@ export default function AccountAuthTable() {
       <AccountAuthFormDialog
         open={dialogOpen}
         target={editTarget}
+        suggestedNumber={suggestedNumber}
         onClose={() => setDialogOpen(false)}
         onSubmit={handleSubmit}
         onSuccess={handleSuccess}

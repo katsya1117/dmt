@@ -36,9 +36,10 @@ export class AccountAuthController extends Controller {
   }
 
   /** 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
-   *  必須項目・No.重複・username重複を弾く。重複は「生きている(delfg=false)
-   *  レコード同士」でのみ判定する（削除済みのNo./usernameは再利用可、という
-   *  客先の運用要望のため）。
+   *  必須項目・No.重複・username重複を弾く。No.は削除済み含む全レコードで
+   *  一意性を見る（過去に使われたNo.の再利用を防ぐ）。usernameは「生きている
+   *  (delfg=false)レコード同士」でのみ判定する（削除済みのusernameは再利用可、
+   *  という客先の運用要望のため）。
    *  usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
    *  ので、重複拒否はこのアプリ層の検証が唯一の砦 */
   @Post()
@@ -46,9 +47,9 @@ export class AccountAuthController extends Controller {
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(409, '予期しないDBエラー')
   public async create(@Body() body: CreateAccountAuthBody): Promise<{ inserted: number } | ErrorResponse> {
-    const alive = listAllAccountAuth().filter((r) => !r.delfg)
-    const existingNumbers = new Set(alive.map((r) => r.number).filter((n): n is number => n != null))
-    const existingUsernames = new Set(alive.map((r) => r.username))
+    const all = listAllAccountAuth()
+    const existingNumbers = new Set(all.map((r) => r.number).filter((n): n is number => n != null))
+    const existingUsernames = new Set(all.filter((r) => !r.delfg).map((r) => r.username))
     const errors = validateImportRecords(body.records, existingNumbers, existingUsernames)
     if (errors.length > 0) {
       this.setStatus(400)
@@ -65,8 +66,10 @@ export class AccountAuthController extends Controller {
   }
 
   /** 更新（リストア＝delfg: true→falseも含む）。更新後にdelfg=falseになる
-   *  場合のみ、自分以外の生きているレコードとNo./username重複がないか検証する
+   *  場合のみ、自分以外のレコードとNo./username重複がないか検証する
    *  （削除済みのままにする更新や、削除する更新は重複を気にしなくてよい）。
+   *  No.は削除済み含む全レコードで、usernameは生きているレコードのみで判定
+   *  する（詳細はcreate()のコメント参照）。
    *  passwordは空文字＝「パスワードを変更する」チェックOFF（クライアント側の
    *  規約）で、既存ハッシュを維持する（実際のハッシュ化・維持判定はリポジトリ
    *  層で行う）。ここでは必須チェックが誤爆しないよう、検証にかける値だけ
@@ -82,9 +85,9 @@ export class AccountAuthController extends Controller {
       return { error: '対象が見つかりません' }
     }
     if (!input.delfg) {
-      const others = all.filter((r) => r.id !== id && !r.delfg)
+      const others = all.filter((r) => r.id !== id)
       const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
-      const existingUsernames = new Set(others.map((r) => r.username))
+      const existingUsernames = new Set(others.filter((r) => !r.delfg).map((r) => r.username))
       const recordForValidation: AccountAuthInput = {
         ...input,
         password: input.password.trim() === '' ? current.password : input.password,

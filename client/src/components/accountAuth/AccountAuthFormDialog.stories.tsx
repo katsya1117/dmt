@@ -16,7 +16,7 @@ const sampleRow: AccountAuth = {
 }
 
 // 開閉とsubmit内容の確認用ラッパー
-function Harness({ target }: { target: AccountAuth | null }) {
+function Harness({ target, suggestedNumber }: { target: AccountAuth | null; suggestedNumber?: number }) {
   const [open, setOpen] = useState(true)
   const [submitted, setSubmitted] = useState<AccountAuthInput | null>(null)
   const handleSubmit = async (input: AccountAuthInput) => { setSubmitted(input) }
@@ -27,6 +27,7 @@ function Harness({ target }: { target: AccountAuth | null }) {
       <AccountAuthFormDialog
         open={open}
         target={target}
+        suggestedNumber={suggestedNumber}
         onClose={() => setOpen(false)}
         onSubmit={handleSubmit}
         onSuccess={() => setOpen(false)}
@@ -43,8 +44,8 @@ export default meta
 
 type Story = StoryObj<typeof Harness>
 
-// 新規追加（空フォーム＋バリデーション）
-export const Add: Story = { args: { target: null } }
+// 新規追加（No.欄に提案値がプリセットされる。空フォーム＋バリデーション）
+export const Add: Story = { args: { target: null, suggestedNumber: 1003 } }
 
 // 編集（既存値がプリセットされる）
 export const Edit: Story = { args: { target: sampleRow } }
