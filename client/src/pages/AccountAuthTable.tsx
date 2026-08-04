@@ -304,20 +304,40 @@ export default function AccountAuthTable() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      {/* 列の表示制御は操作対象（テーブル）のすぐ近くに置く。テーブルヘッダーの
-          真上に小さめのテキストボタンとして配置し、どの列を出すかの操作だと
-          直感的に分かるようにする（2026-08-05） */}
-      <Stack direction="row" justifyContent="flex-end" sx={{ mb: 0.5 }}>
-        <Button
-          size="small"
-          startIcon={<ViewColumnIcon fontSize="small" />}
-          onClick={openColumnsPanel}
+      {/* テーブルとその操作UIを1枚のパネルに一体化する。外側のBoxが枠線・角丸を
+          持ち、上部の操作バー（区切り線付き）とDataGrid（枠線なし）を内包する
+          ことで、列表示制御がテーブルの一部だと視覚的に伝わる（2026-08-05） */}
+      <Box
+        sx={{
+          height: '70vh',
+          display: 'flex',
+          flexDirection: 'column',
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          overflow: 'hidden',
+        }}
+      >
+        <Stack
+          direction="row"
+          justifyContent="flex-end"
+          alignItems="center"
+          sx={{
+            px: 1,
+            py: 0.5,
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: 'action.hover',
+          }}
         >
-          表示する列
-        </Button>
-      </Stack>
-
-      <Box sx={{ height: '70vh' }}>
+          <Button
+            size="small"
+            startIcon={<ViewColumnIcon fontSize="small" />}
+            onClick={openColumnsPanel}
+          >
+            表示する列
+          </Button>
+        </Stack>
         <DataGrid
           apiRef={apiRef}
           rows={filteredData ?? []}
@@ -325,7 +345,13 @@ export default function AccountAuthTable() {
           loading={isLoading}
           density="compact"
           getRowClassName={(params) => (params.row.delfg ? 'account-auth-deleted-row' : '')}
-          sx={{ '& .account-auth-deleted-row': { opacity: 0.6 }, '& .MuiDataGrid-row': { cursor: 'pointer' } }}
+          sx={{
+            flex: 1,
+            border: 0,
+            borderRadius: 0,
+            '& .account-auth-deleted-row': { opacity: 0.6 },
+            '& .MuiDataGrid-row': { cursor: 'pointer' },
+          }}
           disableRowSelectionOnClick
           // 操作列を右端固定できない（列固定はPro限定）ため、行のどこをクリック
           // しても編集ダイアログが開くようにした。横長テーブルで編集ボタンを
