@@ -24,7 +24,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
-import { DataGrid, GridActionsCellItem, Toolbar, ColumnsPanelTrigger, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, GridActionsCellItem, useGridApiRef, GridPreferencePanelsValue, type GridColDef } from '@mui/x-data-grid'
 import EditIcon from '@mui/icons-material/Edit'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -54,21 +54,6 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
   { key: 'upd_date', label: '更新日時', width: 160 },
 ]
 
-// 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
-// 列選択ツールバー（表示/非表示の切り替え）だけを出す。既存の検索欄と
-// 重複するクイックフィルタ等は含めない最小構成のツールバー。
-// 【GridToolbarContainer/GridToolbarColumnsButtonは非推奨】v8で Toolbar /
-// ColumnsPanelTrigger に置き換わった（将来のメジャーバージョンで削除予定のため）
-function ColumnsOnlyToolbar() {
-  return (
-    <Toolbar>
-      <ColumnsPanelTrigger render={<Button size="small" startIcon={<ViewColumnIcon fontSize="small" />} />}>
-        列
-      </ColumnsPanelTrigger>
-    </Toolbar>
-  )
-}
-
 export default function AccountAuthTable() {
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
   // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
@@ -77,6 +62,12 @@ export default function AccountAuthTable() {
   const [update, { isLoading: updating }] = accountAuthApi.useUpdateAccountAuthMutation()
   const [applyImportDiff, { isLoading: applying }] = accountAuthApi.useApplyAccountAuthImportDiffMutation()
   // removeAccountAuth は削除機能未開放のため不使用
+
+  // 列の表示/非表示は DataGrid 標準の「列パネル」を使う。ただし内蔵ツールバー
+  // （showToolbar）はヘッダー上に余白の帯を作り、トリガーも浮いて見えるため使わず、
+  // apiRef 経由で他の操作ボタンと同じ行に置いたボタンからパネルを開く（2026-08-05）
+  const apiRef = useGridApiRef()
+  const openColumnsPanel = () => apiRef.current?.showPreferences(GridPreferencePanelsValue.columns)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
@@ -275,7 +266,12 @@ export default function AccountAuthTable() {
     <Box sx={{ p: 3 }}>
       <Typography variant="h1" gutterBottom>アカウント認証テーブル</Typography>
 
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+      <Stack
+        direction="row"
+        spacing={1}
+        useFlexGap
+        sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}
+      >
         <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
         <Button
           variant="outlined"
@@ -287,6 +283,15 @@ export default function AccountAuthTable() {
           {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
         </Button>
         <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
+        {/* 検索欄は右寄せにして、左側の操作ボタン群と役割を視覚的に分ける */}
+        <Button
+          variant="outlined"
+          startIcon={<ViewColumnIcon />}
+          onClick={openColumnsPanel}
+          sx={{ ml: 'auto' }}
+        >
+          表示する列
+        </Button>
         <TextField
           size="small"
           sx={{ width: 140 }}
@@ -309,6 +314,7 @@ export default function AccountAuthTable() {
 
       <Box sx={{ height: '70vh' }}>
         <DataGrid
+          apiRef={apiRef}
           rows={filteredData ?? []}
           columns={columns}
           loading={isLoading}
@@ -340,9 +346,7 @@ export default function AccountAuthTable() {
           }}
           pageSizeOptions={[{ value: -1, label: 'すべて' }]}
           hideFooter
-          showToolbar
           slots={{
-            toolbar: ColumnsOnlyToolbar,
             noRowsOverlay: () => (
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 {data?.length === 0 ? 'データがありません' : '該当する行がありません'}
