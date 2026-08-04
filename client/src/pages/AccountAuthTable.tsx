@@ -284,18 +284,10 @@ export default function AccountAuthTable() {
         </Button>
         <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
         {/* 検索欄は右寄せにして、左側の操作ボタン群と役割を視覚的に分ける */}
-        <Button
-          variant="outlined"
-          startIcon={<ViewColumnIcon />}
-          onClick={openColumnsPanel}
-          sx={{ ml: 'auto' }}
-        >
-          表示する列
-        </Button>
         <TextField
           size="small"
-          sx={{ width: 140 }}
-          label="No.で絞り込み"
+          sx={{ ml: 'auto', width: 140 }}
+          label="No.で��り込み"
           placeholder="例: 1001"
           value={numberSearch}
           onChange={(e) => setNumberSearch(e.target.value)}
@@ -311,6 +303,19 @@ export default function AccountAuthTable() {
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
+
+      {/* 列の表示制御は操作対象（テーブル）のすぐ近くに置く。テーブルヘッダーの
+          真上に小さめのテキストボタンとして配置し、どの列を出すかの操作だと
+          直感的に分かるようにする（2026-08-05） */}
+      <Stack direction="row" justifyContent="flex-end" sx={{ mb: 0.5 }}>
+        <Button
+          size="small"
+          startIcon={<ViewColumnIcon fontSize="small" />}
+          onClick={openColumnsPanel}
+        >
+          表示する列
+        </Button>
+      </Stack>
 
       <Box sx={{ height: '70vh' }}>
         <DataGrid
