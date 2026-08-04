@@ -287,7 +287,15 @@ export default function AccountAuthTable() {
         {/* 検索欄は右寄せにして、左側の操作ボタン群と役割を視覚的に分ける */}
         <TextField
           size="small"
-          sx={{ ml: 'auto', width: 180 }}
+          sx={{ ml: 'auto', width: 140 }}
+          label="No.で絞り込み"
+          placeholder="例: 1001"
+          value={numberSearch}
+          onChange={(e) => setNumberSearch(e.target.value)}
+        />
+        <TextField
+          size="small"
+          sx={{ width: 180 }}
           label="ユーザー名で絞り込み"
           placeholder="例: dealer001"
           value={usernameSearch}
