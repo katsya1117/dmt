@@ -13,6 +13,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Chip from '@mui/material/Chip'
@@ -304,38 +305,22 @@ export default function AccountAuthTable() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      {/* テーブルと操作UIを1枚のパネルに一体化する。ポイントは「別の帯を足さない」
-          こと。ツールバー strip と DataGrid の列ヘッダーを同じトーン（slate-100）で
-          塗り、両者の間に境界を引かないことで、操作行と列ヘッダーが1つの
-          「ヘッド領域」として地続きに見える。区切り線はヘッドと行の間にだけ入る
-          （テーマの MuiTableHead と同じ slate-100 を使用）（2026-08-05） */}
-      <Box
-        sx={{
-          height: '70vh',
-          display: 'flex',
-          flexDirection: 'column',
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: 1,
-          overflow: 'hidden',
-        }}
-      >
-        <Stack
-          direction="row"
-          justifyContent="flex-end"
-          alignItems="center"
-          sx={{ px: 1, py: 0.25, bgcolor: 'grey.100' }}
-        >
-          <Button
+      {/* 列表示設定は表から独立させ、表の右上にアイコンのみで置く。ホバーで
+          背景が変わりボタンだと分かるようにし、ツールチップで用途を補う（2026-08-05） */}
+      <Stack direction="row" sx={{ mb: 0.5, justifyContent: 'flex-end' }}>
+        <Tooltip title="列表示設定">
+          <IconButton
             size="small"
-            color="inherit"
-            startIcon={<ViewColumnIcon fontSize="small" />}
+            aria-label="列表示設定"
             onClick={openColumnsPanel}
-            sx={{ color: 'text.secondary', fontWeight: 500 }}
+            sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
           >
-            表示する列
-          </Button>
-        </Stack>
+            <ViewColumnIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </Stack>
+
+      <Box sx={{ height: '70vh' }}>
         <DataGrid
           apiRef={apiRef}
           rows={filteredData ?? []}
@@ -343,15 +328,7 @@ export default function AccountAuthTable() {
           loading={isLoading}
           density="compact"
           getRowClassName={(params) => (params.row.delfg ? 'account-auth-deleted-row' : '')}
-          sx={{
-            flex: 1,
-            border: 0,
-            borderRadius: 0,
-            // 列ヘッダーをツールバーと同じ slate-100 にして地続きに見せる
-            '--DataGrid-containerBackground': (t) => t.palette.grey[100],
-            '& .account-auth-deleted-row': { opacity: 0.6 },
-            '& .MuiDataGrid-row': { cursor: 'pointer' },
-          }}
+          sx={{ '& .account-auth-deleted-row': { opacity: 0.6 }, '& .MuiDataGrid-row': { cursor: 'pointer' } }}
           disableRowSelectionOnClick
           // 操作列を右端固定できない（列固定はPro限定）ため、行のどこをクリック
           // しても編集ダイアログが開くようにした。横長テーブルで編集ボタンを
