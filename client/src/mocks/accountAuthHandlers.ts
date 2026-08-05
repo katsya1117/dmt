@@ -97,11 +97,17 @@ function appendComment(existing: string | null, addition: string): string {
 }
 
 // アップロードされたFormDataから 'file' を取り出しレコード配列に変換する
-async function extractRecords(request: Request): Promise<AccountAuthInput[]> {
-  const formData = await request.formData()
+async function extractRecords(formData: FormData): Promise<AccountAuthInput[]> {
   const file = formData.get('file')
   if (!(file instanceof File)) return []
   return parseAccountAuthExcel(file)
+}
+
+// commentOverrides（{ 行番号: 編集後の文字列 }のJSON文字列）を取り出す。
+// サーバー側 accountAuthImportController.ts と同じ仕組み（詳細はそちらのコメント参照）
+function extractCommentOverrides(formData: FormData): Record<number, string> {
+  const raw = formData.get('commentOverrides')
+  return typeof raw === 'string' ? JSON.parse(raw) : {}
 }
 
 // 【本物のMD5ではない】ブラウザで動くモック用の簡易版。実際のハッシュ化は
@@ -127,21 +133,21 @@ function validateImportRecords(
   records: AccountAuthInput[],
   existingNumbers: ReadonlySet<number> = new Set(),
   existingUsernames: ReadonlySet<string> = new Set(),
-): string[] {
-  const errors: string[] = []
+): { line: number; message: string }[] {
+  const errors: { line: number; message: string }[] = []
   const firstSeenLine = new Map<string, string>()
   const firstSeenNumberLine = new Map<number, string>()
   for (const n of existingNumbers) firstSeenNumberLine.set(n, '既存データ')
   for (const u of existingUsernames) firstSeenLine.set(u, '既存データ')
   records.forEach((r, i) => {
     const line = i + 1
-    if (!r.username) errors.push(`${line}行目：usernameが空です`)
-    if (!r.password) errors.push(`${line}行目：passwordが空です`)
+    if (!r.username) errors.push({ line, message: `${line}行目：usernameが空です` })
+    if (!r.password) errors.push({ line, message: `${line}行目：passwordが空です` })
     // No.は削除済み行も含めて常にチェックする
     if (r.number != null) {
       const firstNumber = firstSeenNumberLine.get(r.number)
       if (firstNumber != null) {
-        errors.push(`${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}`)
+        errors.push({ line, message: `${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}` })
       } else {
         firstSeenNumberLine.set(r.number, `${line}行目`)
       }
@@ -151,7 +157,7 @@ function validateImportRecords(
     if (r.username) {
       const first = firstSeenLine.get(r.username)
       if (first != null) {
-        errors.push(`${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+        errors.push({ line, message: `${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}` })
       } else {
         firstSeenLine.set(r.username, `${line}行目`)
       }
@@ -160,31 +166,42 @@ function validateImportRecords(
   return errors
 }
 
+// 手動追加・更新は常に1件だけの検証なので「N行目：」という前置きが意味を
+// 成さない。サーバー側 accountAuthDiff.ts の formatManualValidationMessage と同じロジック
+function formatManualValidationMessage(error: { line: number; message: string }): string {
+  return error.message.replace(/^\d+行目：/, '')
+}
+
 export const accountAuthHandlers = [
   // 差分プレビュー（書き込みなし）。サーバーの diff ロジックと同等
   http.post('/api/account-auth/import/preview', async ({ request }) => {
     await delay(150)
-    const records = await extractRecords(request)
+    const records = await extractRecords(await request.formData())
     const byUsername = new Map(rows.map((r) => [r.username, r] as const))
-    const added: AccountAuthInput[] = []
-    const changed: { username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
-    const deleted: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
-    const restored: { username: string; before: AccountAuth; after: AccountAuthInput }[] = []
+    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
+    const added: { line: number; record: AccountAuthInput }[] = []
+    const changed: { line: number; username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
+    const deleted: { line: number; username: string; before: AccountAuth; after: AccountAuthInput }[] = []
+    const restored: { line: number; username: string; before: AccountAuth; after: AccountAuthInput }[] = []
     let unchangedCount = 0
-    for (const r of records) {
-      const cur = byUsername.get(r.username)
+    records.forEach((r, i) => {
+      const line = i + 1
+      // No.を優先して照合する（サーバー側 accountAuthDiff.ts と同じ理由。
+      // usernameは削除後に再利用されうるため、usernameだけだと間違ったDB行に
+      // マッチする危険がある）
+      const cur = r.number != null ? (byNumber.get(r.number) ?? byUsername.get(r.username)) : byUsername.get(r.username)
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
-        added.push({ ...r, comment: null })
-        continue
+        added.push({ line, record: { ...r, comment: null } })
+        return
       }
       if (r.delfg && !cur.delfg) {
-        deleted.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
-        continue
+        deleted.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
+        return
       }
       if (!r.delfg && cur.delfg) {
-        restored.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
-        continue
+        restored.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
+        return
       }
       // passwordはDBがハッシュ・Excelは平文なので、比較前にハッシュ化する
       // （サーバー側 accountAuthDiff.ts と同じ理由。単純比較だと常に「変更」扱いになる）
@@ -195,9 +212,9 @@ export const accountAuthHandlers = [
       if (changedFields.length) {
         const changeText = buildChangeComment(changedFields, cur, r)
         const after: AccountAuthInput = { ...r, comment: changeText ? appendComment(cur.comment, changeText) : cur.comment }
-        changed.push({ username: r.username, before: cur, after, changedFields })
+        changed.push({ line, username: r.username, before: cur, after, changedFields })
       } else unchangedCount++
-    }
+    })
     const validationErrors = validateImportRecords(records)
     return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, validationErrors })
   }),
@@ -205,7 +222,9 @@ export const accountAuthHandlers = [
   // 適用（承認後）。preview と同じ突合ロジックで反映する
   http.post('/api/account-auth/import/apply', async ({ request }) => {
     await delay(150)
-    const records = await extractRecords(request)
+    const formData = await request.formData()
+    const records = await extractRecords(formData)
+    const commentOverrides = extractCommentOverrides(formData)
 
     const errors = validateImportRecords(records)
     if (errors.length > 0) {
@@ -213,31 +232,34 @@ export const accountAuthHandlers = [
     }
 
     const byUsername = new Map(rows.map((r) => [r.username, r] as const))
+    const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     let inserted = 0
     let updated = 0
     let deleted = 0
     let restored = 0
-    for (const r of records) {
-      const cur = byUsername.get(r.username)
+    records.forEach((r, i) => {
+      const line = i + 1
+      const cur = r.number != null ? (byNumber.get(r.number) ?? byUsername.get(r.username)) : byUsername.get(r.username)
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
-        rows.push({ ...r, password: fakeHashPassword(r.password), comment: null, id: nextId++, reg_date: now(), upd_date: now() })
+        const comment = commentOverrides[line] ?? null
+        rows.push({ ...r, password: fakeHashPassword(r.password), comment, id: nextId++, reg_date: now(), upd_date: now() })
         inserted++
-        continue
+        return
       }
       if (r.delfg && !cur.delfg) {
         cur.delfg = true
-        cur.comment = appendComment(cur.comment, `${todayStr()} 削除`)
+        cur.comment = commentOverrides[line] ?? appendComment(cur.comment, `${todayStr()} 削除`)
         cur.upd_date = now()
         deleted++
-        continue
+        return
       }
       if (!r.delfg && cur.delfg) {
         cur.delfg = false
-        cur.comment = appendComment(cur.comment, `${todayStr()} 再登録`)
+        cur.comment = commentOverrides[line] ?? appendComment(cur.comment, `${todayStr()} 再登録`)
         cur.upd_date = now()
         restored++
-        continue
+        return
       }
       // passwordはDBがハッシュ・Excelは平文なので、比較前にハッシュ化する
       // （サーバー側 accountAuthDiff.ts と同じ理由。単純比較だと常に「変更」扱いになる）
@@ -249,11 +271,11 @@ export const accountAuthHandlers = [
         // Excel取り込みは常に平文パスワードが渡ってくる前提で毎回ハッシュ化する
         // （手動更新のような「空文字＝維持」の分岐は無い。サーバー側と同じ）
         const changeText = buildChangeComment(changedFields, cur, r)
-        const comment = changeText ? appendComment(cur.comment, changeText) : cur.comment
+        const comment = commentOverrides[line] ?? (changeText ? appendComment(cur.comment, changeText) : cur.comment)
         Object.assign(cur, r, { password: fakeHashPassword(r.password), comment, upd_date: now() })
         updated++
       }
-    }
+    })
     return HttpResponse.json({ inserted, updated, deleted, restored })
   }),
 
@@ -273,7 +295,7 @@ export const accountAuthHandlers = [
     const existingUsernames = new Set(rows.filter((r) => !r.delfg).map((r) => r.username))
     const errors = validateImportRecords(records, existingNumbers, existingUsernames)
     if (errors.length > 0) {
-      return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })
+      return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
     }
     for (const r of records) {
       rows.push({ ...r, password: fakeHashPassword(r.password), id: nextId++, reg_date: now(), upd_date: now() })
@@ -299,7 +321,7 @@ export const accountAuthHandlers = [
       const existingUsernames = new Set(others.filter((r) => !r.delfg).map((r) => r.username))
       const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingUsernames)
       if (errors.length > 0) {
-        return HttpResponse.json({ error: errors.join(' / ') }, { status: 400 })
+        return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
       }
     }
     rows[idx] = { ...rows[idx], ...input, password, id, upd_date: now() }

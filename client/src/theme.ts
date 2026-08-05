@@ -1,4 +1,6 @@
 import { createTheme } from '@mui/material/styles'
+// MuiDataGridをテーマのcomponents overridesで型認識させるための型拡張のみのimport
+import type {} from '@mui/x-data-grid/themeAugmentation'
 
 const theme = createTheme({
   palette: {
@@ -176,6 +178,15 @@ const theme = createTheme({
         thumb: {
           boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px 0 rgb(0 0 0 / 0.2)',
         },
+      },
+    },
+    // DataGridの列表示パネルにある検索欄を消す。列数がどの画面も15個程度で
+    // 検索するまでもなく、かつパネルはPopper経由でDataGridの外（documentの
+    // 別階層）にポータル描画されるため、DataGrid個別のsxでは届かず全体で
+    // 上書きする必要がある（2026-08-05）
+    MuiDataGrid: {
+      styleOverrides: {
+        columnsManagementHeader: { display: 'none' },
       },
     },
   },

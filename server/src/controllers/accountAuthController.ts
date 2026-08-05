@@ -8,7 +8,7 @@ import {
   type AccountAuth,
   type AccountAuthInput,
 } from '../repositories/accountAuth'
-import { validateImportRecords } from '../services/accountAuthDiff'
+import { validateImportRecords, formatManualValidationMessage } from '../services/accountAuthDiff'
 
 // 追加リクエストのボディ（手入力1件もExcel複数件も同じ口）
 interface CreateAccountAuthBody {
@@ -53,7 +53,7 @@ export class AccountAuthController extends Controller {
     const errors = validateImportRecords(body.records, existingNumbers, existingUsernames)
     if (errors.length > 0) {
       this.setStatus(400)
-      return { error: errors.join(' / ') }
+      return { error: errors.map(formatManualValidationMessage).join(' / ') }
     }
     try {
       const result = createAccountAuth(body.records)
@@ -95,7 +95,7 @@ export class AccountAuthController extends Controller {
       const errors = validateImportRecords([recordForValidation], existingNumbers, existingUsernames)
       if (errors.length > 0) {
         this.setStatus(400)
-        return { error: errors.join(' / ') }
+        return { error: errors.map(formatManualValidationMessage).join(' / ') }
       }
     }
     try {

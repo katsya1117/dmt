@@ -27,14 +27,18 @@ const restoredBefore: AccountAuth = {
 const sampleDiff: ImportDiff = {
   added: [
     {
-      username: 'dealer020', password: 'newpass', comment: null, number: 1020,
-      submission_date: '2026-07-01', regist_date: '2026-07-02',
-      company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '01',
-      non_sync: false, store_cd: 'S003', store_name: '大阪中央店', delfg: false,
+      line: 1,
+      record: {
+        username: 'dealer020', password: 'newpass', comment: null, number: 1020,
+        submission_date: '2026-07-01', regist_date: '2026-07-02',
+        company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '01',
+        non_sync: false, store_cd: 'S003', store_name: '大阪中央店', delfg: false,
+      },
     },
   ],
   changed: [
     {
+      line: 2,
       username: before.username,
       before,
       after: {
@@ -50,6 +54,7 @@ const sampleDiff: ImportDiff = {
   ],
   deleted: [
     {
+      line: 3,
       username: deletedBefore.username,
       before: deletedBefore,
       after: { ...deletedBefore, comment: '2026/07/31 削除', delfg: true },
@@ -57,6 +62,7 @@ const sampleDiff: ImportDiff = {
   ],
   restored: [
     {
+      line: 4,
       username: restoredBefore.username,
       before: restoredBefore,
       after: { ...restoredBefore, comment: `${restoredBefore.comment} 2026/07/31 再登録`, delfg: false },
@@ -88,14 +94,15 @@ type Story = StoryObj<typeof Harness>
 // 追加/変更/削除/リストアが一通り混在する差分（自動追記コメントの見た目も確認できる）
 export const Default: Story = { args: { diff: sampleDiff } }
 
-// 検証エラーがあり適用ボタンが無効化されているケース
+// 検証エラーがあり適用ボタンが無効化されているケース。
+// 1行目（追加行）と2行目（変更行）がエラー対象＝一覧でその行が赤くハイライトされる
 export const WithValidationErrors: Story = {
   args: {
     diff: {
       ...sampleDiff,
       validationErrors: [
-        '2行目：No.が1行目と重複しています（No.は一意である必要があります）: 1020',
-        '3行目：usernameが空です',
+        { line: 1, message: '1行目：No.が2行目と重複しています（No.は一意である必要があります）: 1020' },
+        { line: 2, message: '2行目：No.が1行目と重複しています（No.は一意である必要があります）: 1020' },
       ],
     },
   },

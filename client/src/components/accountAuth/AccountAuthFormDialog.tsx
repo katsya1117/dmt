@@ -199,7 +199,7 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
             <Grid size={half}><RhfTextField name="company_store_branch_num" control={control} label="店舗CD枝番" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_cd" control={control} label="販売店CD" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_name" control={control} label="販売店名" size="small" fullWidth /></Grid>
-            <Grid size={12}><RhfTextField name="comment" control={control} label="備考" size="small" fullWidth multiline minRows={2} /></Grid>
+            <Grid size={12}><RhfTextField name="comment" control={control} label="コメント" size="small" fullWidth multiline minRows={2} /></Grid>
             {/* スイッチ2つ（診断データ対象外・削除フラグ）は最下部にまとめる */}
             <Grid size={12}>
               <Controller name="non_sync" control={control} render={({ field }) => (

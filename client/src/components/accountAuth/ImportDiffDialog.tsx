@@ -1,14 +1,17 @@
+import { useEffect, useRef, useState } from 'react'
 import Dialog from '@mui/material/Dialog'
 import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogActions from '@mui/material/DialogActions'
 import Button from '@mui/material/Button'
+import IconButton from '@mui/material/IconButton'
+import Stack from '@mui/material/Stack'
 import Box from '@mui/material/Box'
 import Chip from '@mui/material/Chip'
 import Typography from '@mui/material/Typography'
 import Alert from '@mui/material/Alert'
 import Tooltip from '@mui/material/Tooltip'
-import { DataGrid, Toolbar, ColumnsPanelTrigger, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, useGridApiRef, GridPreferencePanelsValue, type GridColDef } from '@mui/x-data-grid'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import { AUTH_CRITICAL_FIELDS } from '../../api/accountAuthImport'
@@ -18,7 +21,8 @@ type Props = {
   open: boolean
   diff: ImportDiff | null
   onClose: () => void
-  onApply: () => void
+  /** 承認。コメント欄を手動編集していた場合は { 行番号: 編集後の文字列 } を渡す */
+  onApply: (commentOverrides: Record<number, string>) => void
   applying: boolean
 }
 
@@ -45,37 +49,61 @@ const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) 
   { key: 'non_sync', label: '診断対象外', format: (v) => (v ? '対象外' : '通常') },
   { key: 'store_cd', label: '販売店CD' },
   { key: 'store_name', label: '販売店名' },
-  { key: 'comment', label: '備考' },
+  // コメントは自由記述欄で空であること自体が普通なので、他の列と違い
+  // 未入力時に「—」を出さず空欄のままにする
+  { key: 'comment', label: 'コメント', format: (v) => (v ? String(v) : '') },
 ]
 
-type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[] }
-
-// 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
-// 列選択ツールバー（表示/非表示の切り替え）だけを出す最小構成。
-// 【GridToolbarContainer/GridToolbarColumnsButtonは非推奨】v8で Toolbar /
-// ColumnsPanelTrigger に置き換わった（将来のメジャーバージョンで削除予定のため）
-function ColumnsOnlyToolbar() {
-  return (
-    <Toolbar>
-      <ColumnsPanelTrigger render={<Button size="small" startIcon={<ViewColumnIcon fontSize="small" />} />}>
-        列
-      </ColumnsPanelTrigger>
-    </Toolbar>
-  )
-}
+type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[]; line: number }
 
 export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
   const hasValidationErrors = !!diff?.validationErrors.length
 
+  // 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
+  // 列表示設定ボタン（アイコンのみ）から列パネルを開閉する。
+  // AccountAuthTable.tsxと同じ実装・同じ理由（トグル時のクリックアウェイ
+  // 競合の回避も含む。詳細はそちらのコメント参照）
+  const apiRef = useGridApiRef()
+  const columnsPanelWasOpenRef = useRef(false)
+  const captureColumnsPanelState = () => {
+    columnsPanelWasOpenRef.current = !!apiRef.current?.state.preferencePanel.open
+  }
+  const toggleColumnsPanel = () => {
+    if (columnsPanelWasOpenRef.current) apiRef.current?.hidePreferences()
+    else apiRef.current?.showPreferences(GridPreferencePanelsValue.columns)
+  }
+
+  // コメント欄はプレビュー上で手動編集できる（自動生成の内容が意図と違う場合に
+  // 直せるようにするため）。編集内容は行番号（ファイル内の行位置）に紐付けて
+  // 覚えておき、「適用」時にファイルと一緒にサーバーへ渡す。サーバー側は
+  // 差分をDBから再計算した後、この対応表で該当行のコメントだけ差し替える
+  // （「DBを信用してファイルから作り直す」という安全設計自体は変えない）。
+  // 新しいプレビュー結果が来たら編集内容はリセットする
+  const [commentEdits, setCommentEdits] = useState<Record<number, string>>({})
+  useEffect(() => {
+    setCommentEdits({})
+  }, [diff])
+
   const rows: Row[] = diff
     ? [
-        ...diff.added.map((r): Row => ({ id: `追加-${r.username}`, kind: '追加', username: r.username, record: r, changedFields: [] })),
-        ...diff.changed.map((c): Row => ({ id: `変更-${c.username}`, kind: '変更', username: c.username, record: c.after, changedFields: c.changedFields })),
-        ...diff.deleted.map((d): Row => ({ id: `削除-${d.username}`, kind: '削除', username: d.username, record: d.after, changedFields: [] })),
-        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: r.after, changedFields: [] })),
+        ...diff.added.map((r): Row => ({ id: `追加-${r.record.username}`, kind: '追加', username: r.record.username, record: { ...r.record, comment: commentEdits[r.line] ?? r.record.comment }, changedFields: [], line: r.line })),
+        ...diff.changed.map((c): Row => ({ id: `変更-${c.username}`, kind: '変更', username: c.username, record: { ...c.after, comment: commentEdits[c.line] ?? c.after.comment }, changedFields: c.changedFields, line: c.line })),
+        ...diff.deleted.map((d): Row => ({ id: `削除-${d.username}`, kind: '削除', username: d.username, record: { ...d.after, comment: commentEdits[d.line] ?? d.after.comment }, changedFields: [], line: d.line })),
+        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: { ...r.after, comment: commentEdits[r.line] ?? r.after.comment }, changedFields: [], line: r.line })),
       ]
     : []
+
+  const processRowUpdate = (newRow: Row) => {
+    setCommentEdits((prev) => ({ ...prev, [newRow.line]: newRow.record.comment ?? '' }))
+    return newRow
+  }
+
+  // 検証エラーが指している行番号の集合。一覧側でこの行を赤くハイライトする。
+  // 【対象外になる稀なケース】他の項目に変更が一切ない（＝一覧に表示されない
+  // 「変更なし」扱いの）行がエラー対象になった場合、ハイライトする行自体が
+  // 画面に無いため反映されない。その場合も下の検証エラー一覧には文章で出る
+  const errorLines = new Set((diff?.validationErrors ?? []).map((e) => e.line))
 
   const columns: GridColDef<Row>[] = [
     {
@@ -86,18 +114,36 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
       renderCell: (params) => <Chip size="small" label={params.row.kind} color={KIND_COLOR[params.row.kind]} />,
     },
     ...COLS.map((c): GridColDef<Row> => {
-      // 備考は運用担当者の手入力＋自動追記で長くなりがちなので、固定幅で
-      // 切り詰めず残りの横幅いっぱいまで伸ばす（それでも切れる場合はホバーで全文表示）
+      // コメントは運用担当者の手入力＋自動追記で長くなりがちなので、固定幅で
+      // 切り詰めず残りの横幅いっぱいまで伸ばす
       const isComment = c.key === 'comment'
       return {
         field: c.key,
         headerName: c.label,
         ...(isComment ? { flex: 1, minWidth: 220 } : { width: 140 }),
         sortable: false,
+        // コメントだけ編集可能にする（自動生成の内容を手動で直せるようにする要望）。
+        // valueGetter/valueSetterはrow.record[key]という入れ子構造を読み書きする
+        // ためのもの（DataGridの既定のeditable動作はrowの直下フィールドを想定
+        // しているため、コメントだけ明示的にvalueSetterで書き込み先を指定する）
+        editable: isComment,
         valueGetter: (_value, row) => row.record[c.key],
+        ...(isComment ? {
+          valueSetter: (value: string, row: Row) => ({ ...row, record: { ...row.record, comment: value } }),
+        } : {}),
+        // 【全列でツールチップを出す】コメントに限らず、どの列も内容が溢れうる
+        // （ユーザー名・販売会社名等）ため、renderCellを全列に適用しMUIの
+        // Tooltip＋省略表示に統一する（renderCellが無い列はDataGridがネイティブ
+        // title属性を付け、ブラウザ標準の飾り気のないツールチップになるため）
         renderCell: (params) => {
           const v = params.row.record[c.key]
-          const isChanged = params.row.changedFields.includes(c.key)
+          // 【コメント列は自動追記の有無で強調する】commentはExcelとの差分
+          // 検知対象から除外している（changedFieldsに入らない）ため、変更/削除/
+          // リストアの行では必ず監査コメントが自動追記されているにも関わらず、
+          // 通常の強調ロジックのままだと他の列と同じ見た目に埋もれてしまう。
+          // 追加行以外は必ず自動追記されるという前提のもとで強調する
+          const isCommentAutoAppended = isComment && params.row.kind !== '追加'
+          const isChanged = params.row.changedFields.includes(c.key) || isCommentAutoAppended
           const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
           const display = c.format ? c.format(v) : (v === null || v === undefined || v === '' ? '—' : String(v))
           const content = (
@@ -106,17 +152,17 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
               sx={{
                 fontWeight: isChanged ? 700 : 400,
                 color: isCritical ? 'error.main' : isChanged ? 'info.main' : 'text.primary',
-                ...(isComment ? { display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}),
+                display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}
             >
               {isCritical && '★'}{display}
             </Box>
           )
-          return isComment ? (
+          return (
             <Tooltip title={display} placement="bottom-start">
               <span style={{ display: 'block', width: '100%', overflow: 'hidden' }}>{content}</span>
             </Tooltip>
-          ) : content
+          )
         },
       }
     }),
@@ -129,19 +175,40 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
         <Alert severity="info" sx={{ mb: 2 }}>
           この画面ではまだDBに書き込みません。内容を確認してください（★の付いた認証系の変更は特に注意）。
         </Alert>
+        {/* 列表示設定は表から独立させ、表の右上にアイコンのみで置く（AccountAuthTable.tsxと同じ見た目に統一） */}
+        <Stack direction="row" sx={{ mb: 0.5, justifyContent: 'flex-end' }}>
+          <Tooltip title="列表示設定">
+            <IconButton
+              size="small"
+              aria-label="列表示設定"
+              onPointerDown={captureColumnsPanelState}
+              onClick={toggleColumnsPanel}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+            >
+              <ViewColumnIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
         <Box sx={{ height: '60vh' }}>
           <DataGrid
+            apiRef={apiRef}
             rows={rows}
             columns={columns}
             density="compact"
             disableRowSelectionOnClick
+            getRowClassName={(params) => (errorLines.has(params.row.line) ? 'import-error-row' : '')}
+            sx={{ '& .import-error-row': { bgcolor: 'error.light', '&:hover': { bgcolor: 'error.light' } } }}
+            processRowUpdate={processRowUpdate}
+            onProcessRowUpdateError={(e) => console.error('コメント編集の反映に失敗しました', e)}
             // 承認前レビューなので、ページ送りで見落とすリスクを避けるため
             // 常に全件を1ページで表示する（仮想化は独立して効くため性能は
-            // 変わらない。詳細は AccountAuthTable.tsx の同種コメント参照）
+            // 変わらない。詳細は AccountAuthTable.tsx の同種コメント参照）。
+            // ページネーションは使わないのでフッター（ページ送り矢印・件数
+            // range表示）は隠し、件数は下のTypographyでシンプルに表示する
             initialState={{
               pagination: { paginationModel: { pageSize: -1 } },
               // 水平スクロールを減らすため、優先度が低い列はデフォルト非表示。
-              // 列選択ツールバー（下記slots.toolbar）でいつでも表示に戻せる
+              // 表右上の列表示設定ボタン（列パネル）でいつでも表示に戻せる
               columns: {
                 columnVisibilityModel: {
                   submission_date: false, regist_date: false,
@@ -150,9 +217,8 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
               },
             }}
             pageSizeOptions={[{ value: -1, label: 'すべて' }]}
-            showToolbar
+            hideFooter
             slots={{
-              toolbar: ColumnsOnlyToolbar,
               noRowsOverlay: () => (
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                   変更はありません
@@ -162,20 +228,20 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
           />
         </Box>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          変更なし：{diff?.unchangedCount ?? 0} 件（表示しません）
+          {rows.length} 件
         </Typography>
         {hasValidationErrors && (
           <Alert severity="error" sx={{ mt: 1 }}>
             検証エラーがあります。この内容のままでは適用できません（{diff.validationErrors.length}件）:
             <Box component="ul" sx={{ m: 0, pl: 3 }}>
-              {diff.validationErrors.map((e) => <li key={e}>{e}</li>)}
+              {diff.validationErrors.map((e) => <li key={`${e.line}-${e.message}`}>{e.message}</li>)}
             </Box>
           </Alert>
         )}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={applying}>閉じる</Button>
-        <Button variant="contained" onClick={onApply} disabled={!hasChanges || hasValidationErrors || applying}>
+        <Button variant="contained" onClick={() => onApply(commentEdits)} disabled={!hasChanges || hasValidationErrors || applying}>
           {applying ? '適用中…' : 'この内容で適用'}
         </Button>
       </DialogActions>

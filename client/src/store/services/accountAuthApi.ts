@@ -79,10 +79,10 @@ export const accountAuthApi = createApi({
       invalidatesTags: ['AccountAuth'],
     }),
 
-    applyAccountAuthImportDiff: builder.mutation<ApplyImportResult, File>({
-      queryFn: async (file) => {
+    applyAccountAuthImportDiff: builder.mutation<ApplyImportResult, { file: File; commentOverrides?: Record<number, string> }>({
+      queryFn: async ({ file, commentOverrides }) => {
         try {
-          return { data: await applyImport(file) }
+          return { data: await applyImport(file, commentOverrides) }
         } catch (err) {
           return { error: err as ApiError }
         }

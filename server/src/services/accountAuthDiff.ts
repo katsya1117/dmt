@@ -7,7 +7,15 @@ import { hashPassword } from '../utils/hashPassword'
 // 現状(current)は delfg=1 も含めた全件を渡すこと（リストア判定のため）。
 // ─────────────────────────────────────────────────────────────
 
+// line = Excelファイル内の行番号（1始まり）。プレビュー画面で検証エラーの
+// 行を該当レコードにハイライトするために持たせている
+export interface AddedRow {
+  line: number
+  record: AccountAuthInput
+}
+
 export interface ChangedRow {
+  line: number
   username: string
   before: AccountAuth
   after: AccountAuthInput
@@ -15,26 +23,34 @@ export interface ChangedRow {
 }
 
 export interface DeletedRow {
+  line: number
   username: string
   before: AccountAuth // 適用時にidで対象行を特定するため保持
   after: AccountAuthInput
 }
 
 export interface RestoredRow {
+  line: number
   username: string
   before: AccountAuth
   after: AccountAuthInput
 }
 
+export interface ValidationError {
+  line: number
+  message: string
+}
+
 export interface ImportDiff {
-  added: AccountAuthInput[]
+  added: AddedRow[]
   changed: ChangedRow[]
   deleted: DeletedRow[]
   restored: RestoredRow[]
   unchangedCount: number
   // ファイル内重複などの検証エラー（validateImportRecordsと同じ内容）。
-  // プレビュー時点で気づけるように、差分計算自体は止めずここに載せて返す
-  validationErrors: string[]
+  // プレビュー時点で気づけるように、差分計算自体は止めずここに載せて返す。
+  // lineを持たせているのは、プレビュー画面で該当行をハイライトするため
+  validationErrors: ValidationError[]
 }
 
 // AccountAuthInput の項目名（比較対象）。【commentは含めない】備考欄はExcelから
@@ -94,30 +110,43 @@ function appendComment(existing: string | null, addition: string): string {
 
 export function computeImportDiff(records: AccountAuthInput[], current: AccountAuth[]): ImportDiff {
   const byUsername = new Map<string, AccountAuth>()
-  for (const c of current) byUsername.set(c.username, c)
+  const byNumber = new Map<number, AccountAuth>()
+  for (const c of current) {
+    byUsername.set(c.username, c)
+    if (c.number != null) byNumber.set(c.number, c)
+  }
 
   const diff: ImportDiff = {
     added: [], changed: [], deleted: [], restored: [], unchangedCount: 0,
     validationErrors: [],
   }
 
-  for (const r of records) {
-    const cur = byUsername.get(r.username)
+  records.forEach((r, i) => {
+    const line = i + 1
+    // 【No.を優先して照合する】usernameは削除後に別レコードで再利用できる
+    // 仕様のため、DBに同じusernameの行が複数存在しうる（例：dealer099を削除
+    // →別レコードで再びdealer099を使う）。usernameだけで照合すると
+    // byUsernameが後勝ちで上書きされ、間違った方のDB行にマッチしてしまう
+    // （実例：削除済みのはずの行が、生きている別レコードにマッチしてしまい
+    // 誤って「削除」の差分として検出される）。No.は削除済み含む全レコードで
+    // 一意という前提があるため、No.があればそちらを優先する
+    // （2026-08-06、運用データでの不具合報告により修正）
+    const cur = r.number != null ? (byNumber.get(r.number) ?? byUsername.get(r.username)) : byUsername.get(r.username)
 
     if (!cur) {
       // 新規追加はExcelのcomment列を使わず常に空で始める（備考は運用担当者が
       // アプリ上で手動で書くもので、Excel由来の値を持ち込まない）
-      diff.added.push({ ...r, comment: null })
-      continue
+      diff.added.push({ line, record: { ...r, comment: null } })
+      return
     }
     // 削除／リストアは delfg の遷移で判定。備考に「yyyy/mm/dd 削除」「yyyy/mm/dd 再登録」を自動追記する
     if (r.delfg && !cur.delfg) {
-      diff.deleted.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
-      continue
+      diff.deleted.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
+      return
     }
     if (!r.delfg && cur.delfg) {
-      diff.restored.push({ username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
-      continue
+      diff.restored.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
+      return
     }
     // それ以外は項目の差分。
     // 【passwordだけ特別扱い】DBにはハッシュ、Excelには平文が入っているため、
@@ -131,11 +160,11 @@ export function computeImportDiff(records: AccountAuthInput[], current: AccountA
     if (changedFields.length > 0) {
       const changeText = buildChangeComment(changedFields, cur, r)
       const after: AccountAuthInput = { ...r, comment: changeText ? appendComment(cur.comment, changeText) : cur.comment }
-      diff.changed.push({ username: r.username, before: cur, after, changedFields })
+      diff.changed.push({ line, username: r.username, before: cur, after, changedFields })
     } else {
       diff.unchangedCount++
     }
-  }
+  })
 
   return diff
 }
@@ -167,8 +196,8 @@ export function validateImportRecords(
   records: AccountAuthInput[],
   existingNumbers: ReadonlySet<number> = new Set(),
   existingUsernames: ReadonlySet<string> = new Set(),
-): string[] {
-  const errors: string[] = []
+): ValidationError[] {
+  const errors: ValidationError[] = []
   // 【行番号(No.)も記録する】usernameそのものが重複の原因なので、usernameだけを
   // エラーメッセージに出しても「ファイルの何行目とどこが重複しているか」が
   // 分からない。初出の行番号を記録し、重複検出時に両方の行番号を提示する
@@ -178,13 +207,13 @@ export function validateImportRecords(
   for (const u of existingUsernames) firstSeenLine.set(u, '既存データ')
   records.forEach((r, i) => {
     const line = i + 1
-    if (!r.username) errors.push(`${line}行目：usernameが空です`)
-    if (!r.password) errors.push(`${line}行目：passwordが空です`)
+    if (!r.username) errors.push({ line, message: `${line}行目：usernameが空です` })
+    if (!r.password) errors.push({ line, message: `${line}行目：passwordが空です` })
     // No.は削除済み行も含めて常にチェックする（過去に使われたNo.の再利用を防ぐ）
     if (r.number != null) {
       const firstNumber = firstSeenNumberLine.get(r.number)
       if (firstNumber != null) {
-        errors.push(`${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}`)
+        errors.push({ line, message: `${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}` })
       } else {
         firstSeenNumberLine.set(r.number, `${line}行目`)
       }
@@ -195,11 +224,23 @@ export function validateImportRecords(
     if (r.username) {
       const first = firstSeenLine.get(r.username)
       if (first != null) {
-        errors.push(`${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}`)
+        errors.push({ line, message: `${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}` })
       } else {
         firstSeenLine.set(r.username, `${line}行目`)
       }
     }
   })
   return errors
+}
+
+// 手動追加・更新は常に1件だけの検証なので、Excel取り込み前提の「N行目：」
+// という前置きが意味を成さない（「1行目：usernameが空です」等、存在しない
+// 「行」の話をしているように見えてしまう）。手動操作の呼び出し元だけ、
+// メッセージ先頭のこの前置きを取り除いて表示する。
+// 【なぜこの1箇所を消すだけで済むか】手動呼び出しはrecordsが常に1件
+// （line=1固定）で、existingNumbers/existingUsernamesは常に「既存データ」
+// ラベルとして渡ってくるため、メッセージ本文中に他の行番号が登場することは
+// ない（先頭の「1行目：」を除けば行番号への言及自体が無い）
+export function formatManualValidationMessage(error: ValidationError): string {
+  return error.message.replace(/^\d+行目：/, '')
 }

@@ -25,14 +25,14 @@ import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
-import { DataGrid, GridActionsCellItem, useGridApiRef, GridPreferencePanelsValue, type GridColDef } from '@mui/x-data-grid'
-import EditIcon from '@mui/icons-material/Edit'
+import { DataGrid, useGridApiRef, GridPreferencePanelsValue, type GridColDef } from '@mui/x-data-grid'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { accountAuthApi } from '../store/services/accountAuthApi'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
+import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
@@ -50,7 +50,7 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
   { key: 'company_store_branch_num', label: '枝番', width: 90 },
   { key: 'store_cd', label: '販売店CD', width: 100 },
   { key: 'store_name', label: '販売店名', width: 140 },
-  { key: 'comment', label: '備考', width: 200 },
+  { key: 'comment', label: 'コメント', width: 200 },
   { key: 'reg_date', label: '登録日時', width: 160 },
   { key: 'upd_date', label: '更新日時', width: 160 },
 ]
@@ -66,9 +66,26 @@ export default function AccountAuthTable() {
 
   // 列の表示/非表示は DataGrid 標準の「列パネル」を使う。ただし内蔵ツールバー
   // （showToolbar）はヘッダー上に余白の帯を作り、トリガーも浮いて見えるため使わず、
-  // apiRef 経由で他の操作ボタンと同じ行に置いたボタンからパネルを開く（2026-08-05）
+  // apiRef 経由で他の操作ボタンと同じ行に置いたボタンからパネルを開く（2026-08-05）。
+  // 【ボタンをトグル式にする際のハマりどころ】パネルの実体（GridPanel）は、
+  // このボタンではなくDataGrid内部の隠しアンカー要素（gridPanelAnchor）を
+  // target にしている。そのためパネルのクリックアウェイ判定はこのボタンを
+  // 「外側」とみなし、パネルが開いている時にこのボタンを押すと pointerup の
+  // 時点でクリックアウェイが先に発火してパネルを閉じてしまう。その後に
+  // onClickのトグル判定が走ると、既にstateが「閉じた後」になっているため
+  // 「開く」と誤判定して即座に再オープンしてしまう（クリックしても閉じない
+  // ように見える不具合の原因）。pointerdown（クリックアウェイのpointerupより
+  // 必ず先に発火する）の時点で開閉状態をrefに退避しておき、onClickではその
+  // 退避値だけを見て判断することでこの競合を避ける
   const apiRef = useGridApiRef()
-  const openColumnsPanel = () => apiRef.current?.showPreferences(GridPreferencePanelsValue.columns)
+  const columnsPanelWasOpenRef = useRef(false)
+  const captureColumnsPanelState = () => {
+    columnsPanelWasOpenRef.current = !!apiRef.current?.state.preferencePanel.open
+  }
+  const toggleColumnsPanel = () => {
+    if (columnsPanelWasOpenRef.current) apiRef.current?.hidePreferences()
+    else apiRef.current?.showPreferences(GridPreferencePanelsValue.columns)
+  }
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<AccountAuth | null>(null)
@@ -134,9 +151,9 @@ export default function AccountAuthTable() {
     }
   }
 
-  const doApply = () => {
+  const doApply = (commentOverrides: Record<number, string>) => {
     if (!pendingFile) return
-    applyImportDiff(pendingFile).unwrap()
+    applyImportDiff({ file: pendingFile, commentOverrides }).unwrap()
       .then((r) => {
         setDiffOpen(false)
         setDiff(null)
@@ -146,14 +163,14 @@ export default function AccountAuthTable() {
       .catch((err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }))
   }
 
-  const handleApply = () => {
+  const handleApply = (commentOverrides: Record<number, string>) => {
     if (!pendingFile || !diff) return
     const changeCount = diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length
     if (changeCount >= APPLY_CONFIRM_THRESHOLD) {
-      setConfirmState({ message: `${changeCount}件の変更を適用します。よろしいですか？`, onConfirm: doApply })
+      setConfirmState({ message: `${changeCount}件の変更を適用します。よろしいですか？`, onConfirm: () => doApply(commentOverrides) })
       return
     }
-    doApply()
+    doApply(commentOverrides)
   }
 
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
@@ -209,28 +226,20 @@ export default function AccountAuthTable() {
   // 「列定義が変わった」と判断して余分な再構築コストを払っていた）
   const columns: GridColDef<AccountAuth>[] = useMemo(() => [
     ...TEXT_COLS.map((c): GridColDef<AccountAuth> => {
-      // 備考はrenderCellを指定しないとDataGridがセルにネイティブのtitle属性を
-      // 付け、ブラウザ標準の飾り気のないツールチップになってしまう
-      // （運用担当者の手入力＋自動追記で長くなりがちで最も溢れやすい列）。
-      // ImportDiffDialog.tsxの備考列と同じくMUIのTooltipで統一する
-      const isComment = c.key === 'comment'
+      // 【全列でrenderCellを指定する】DataGridはrenderCellが無い列だと、
+      // セルにネイティブのtitle属性を付けてしまい、ブラウザ標準の飾り気の
+      // ないツールチップになる。どの列も溢れうる（ユーザー名・販売会社名等）
+      // ため、コメントだけでなく全列にMUIのTooltipを適用する。
+      // 【コメント列だけ空欄時に「—」を出さない】他の列は未入力＝「—」で
+      // 統一しているが、コメントは自由記述欄で空であること自体が普通なので、
+      // わざわざ「—」を出さず空欄のままにする
+      const emptyDisplay = c.key === 'comment' ? '' : '—'
       return {
         field: c.key,
         headerName: c.label,
         width: c.width,
-        valueFormatter: (value) => (value === null || value === undefined ? '—' : value),
-        ...(isComment ? {
-          renderCell: (params) => {
-            const display = String(params.formattedValue ?? '—')
-            return (
-              <Tooltip title={display} placement="bottom-start">
-                <span style={{ display: 'block', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {display}
-                </span>
-              </Tooltip>
-            )
-          },
-        } : {}),
+        valueFormatter: (value) => (value === null || value === undefined ? emptyDisplay : value),
+        renderCell: (params) => <OverflowTooltipCell value={String(params.formattedValue ?? emptyDisplay)} />,
       }
     }),
     {
@@ -251,15 +260,6 @@ export default function AccountAuthTable() {
         params.row.delfg
           ? <Chip label="削除済み" color="error" size="small" />
           : <Chip label="有効" color="success" variant="outlined" size="small" />,
-    },
-    {
-      field: 'actions',
-      type: 'actions',
-      headerName: '操作',
-      width: 80,
-      getActions: (params) => [
-        <GridActionsCellItem key="edit" icon={<EditIcon fontSize="small" />} label="編集" onClick={() => openEdit(params.row)} />,
-      ],
     },
   ], [openEdit])
 
@@ -312,7 +312,8 @@ export default function AccountAuthTable() {
           <IconButton
             size="small"
             aria-label="列表示設定"
-            onClick={openColumnsPanel}
+            onPointerDown={captureColumnsPanelState}
+            onClick={toggleColumnsPanel}
             sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
           >
             <ViewColumnIcon fontSize="small" />
@@ -344,7 +345,7 @@ export default function AccountAuthTable() {
           initialState={{
             pagination: { paginationModel: { pageSize: -1 } },
             // 水平スクロールを減らすため、優先度が低い列はデフォルト非表示。
-            // 列選択ツールバー（下記slots.toolbar）でいつでも表示に戻せる
+            // 表右上の列表示設定ボタン（列パネル）でいつでも表示に戻せる
             columns: {
               columnVisibilityModel: {
                 reg_date: false, upd_date: false,

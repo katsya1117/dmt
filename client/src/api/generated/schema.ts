@@ -33,7 +33,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description 差分を承認後に適用。DBを再読込し差分を再計算してから反映する（プレビュー後のDB変化に追従） */
+        /**
+         * @description 差分を承認後に適用。DBを再読込し差分を再計算してから反映する（プレビュー後のDB変化に追従）。
+         *     commentOverrides：プレビュー画面で自動生成コメントを手動編集した場合、
+         *     `{ 行番号: 編集後の文字列 }` のJSON文字列を渡すと、再計算後の該当行の
+         *     コメントをその内容で上書きする。DBを信用してファイルから作り直すという
+         *     安全設計（apply時に差分を再計算する）はそのまま維持し、コメント編集内容
+         *     だけを横に添えて運ぶ。行番号はファイル内の行位置なので、preview時と同じ
+         *     ファイルをそのままapplyに渡す前提（差し替えた場合は行がズレるため対応外）
+         */
         post: operations["Apply"];
         delete?: never;
         options?: never;
@@ -115,6 +123,11 @@ export interface components {
             password: string;
             username: string;
         };
+        AddedRow: {
+            /** Format: double */
+            line: number;
+            record: components["schemas"]["AccountAuthInput"];
+        };
         AccountAuth: {
             delfg: boolean;
             upd_date: string;
@@ -137,29 +150,40 @@ export interface components {
             id: number;
         };
         ChangedRow: {
+            /** Format: double */
+            line: number;
             username: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
             changedFields: string[];
         };
         DeletedRow: {
+            /** Format: double */
+            line: number;
             username: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
         RestoredRow: {
+            /** Format: double */
+            line: number;
             username: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
+        ValidationError: {
+            /** Format: double */
+            line: number;
+            message: string;
+        };
         ImportDiff: {
-            added: components["schemas"]["AccountAuthInput"][];
+            added: components["schemas"]["AddedRow"][];
             changed: components["schemas"]["ChangedRow"][];
             deleted: components["schemas"]["DeletedRow"][];
             restored: components["schemas"]["RestoredRow"][];
             /** Format: double */
             unchangedCount: number;
-            validationErrors: string[];
+            validationErrors: components["schemas"]["ValidationError"][];
         };
         ApplyImportResult: {
             /** Format: double */
@@ -173,7 +197,7 @@ export interface components {
         };
         ImportErrorResponse: {
             error: string;
-            errors?: string[];
+            errors?: components["schemas"]["ValidationError"][];
         };
         ErrorResponse: {
             error: string;
@@ -229,6 +253,7 @@ export interface operations {
                 "multipart/form-data": {
                     /** Format: binary */
                     file: string;
+                    commentOverrides?: string;
                 };
             };
         };
