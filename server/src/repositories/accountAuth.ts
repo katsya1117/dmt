@@ -23,7 +23,7 @@ import { hashPassword } from '../utils/hashPassword'
 // 読み取り型（レスポンス＝全カラム常に存在。? は使わず null可は `| null`）
 export type AccountAuth = {
   id: number
-  username: string
+  accountName: string
   password: string
   comment: string | null
   number: number | null
@@ -43,7 +43,7 @@ export type AccountAuth = {
 
 // 書き込み型（サーバー管理 id/reg_date/upd_date を除く。読み取りと対称。delfgはユーザーが手動編集するため含む）
 export type AccountAuthInput = {
-  username: string
+  accountName: string
   password: string
   comment: string | null
   number: number | null
@@ -59,12 +59,13 @@ export type AccountAuthInput = {
   delfg: boolean // 論理削除フラグ。ユーザーが手動編集（PUTで論理削除）。DELETE APIは未開放
 }
 
-// DBの生の行（tinyintはinteger）
-type Row = Omit<AccountAuth, 'non_sync' | 'delfg'> & { non_sync: number; delfg: number }
+// DBの生の行（カラム名account_name・tinyintはinteger）
+type Row = Omit<AccountAuth, 'accountName' | 'non_sync' | 'delfg'> & { account_name: string; non_sync: number; delfg: number }
 
-// DB行(tinyint) → API(boolean)
+// DB行(account_name/tinyint) → API(accountName/boolean)
 function toApi(row: Row): AccountAuth {
-  return { ...row, non_sync: row.non_sync === 1, delfg: row.delfg === 1 }
+  const { account_name, ...rest } = row
+  return { ...rest, accountName: account_name, non_sync: row.non_sync === 1, delfg: row.delfg === 1 }
 }
 
 const nowStr = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
@@ -78,11 +79,11 @@ export function listAllAccountAuth(): AccountAuth[] {
 export function createAccountAuth(records: AccountAuthInput[]): { inserted: number } {
   const stmt = db.prepare(`
     INSERT INTO account_auth
-      (username, password, comment, number, submission_date, regist_date,
+      (account_name, password, comment, number, submission_date, regist_date,
        company_cd, company_name, company_store_cd, company_store_branch_num,
        non_sync, store_cd, store_name, reg_date, upd_date, delfg)
     VALUES
-      (@username, @password, @comment, @number, @submission_date, @regist_date,
+      (@accountName, @password, @comment, @number, @submission_date, @regist_date,
        @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
        @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
   `)
@@ -106,7 +107,7 @@ export function updateAccountAuth(id: number, input: AccountAuthInput): AccountA
 
   db.prepare(`
     UPDATE account_auth SET
-      username = @username, password = @password, comment = @comment, number = @number,
+      account_name = @accountName, password = @password, comment = @comment, number = @number,
       submission_date = @submission_date, regist_date = @regist_date,
       company_cd = @company_cd, company_name = @company_name,
       company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,
@@ -132,26 +133,26 @@ export function deleteAccountAuth(id: number): { deleted: number } {
 // ─────────────────────────────────────────────────────────────
 // Excel取り込み適用（apply）専用。
 //
-// 【idで判定する】以前はusername一致でDB行を探していたが、username重複の
-// レガシーデータ（客先の旧運用による現役データ）が存在するため、usernameだけ
+// 【idで判定する】以前はaccountName一致でDB行を探していたが、accountName重複の
+// レガシーデータ（客先の旧運用による現役データ）が存在するため、accountNameだけ
 // では「どの行を更新すべきか」を一意に決められない場合がある。差分計算
 // （accountAuthDiff.ts の computeImportDiff）が既にNo.等で正しいDB行を
 // 特定し、その id を渡してくる前提にすることで、この曖昧さを無くしている。
-// added（新規追加）だけは対応するDB行が無い＝usernameで新規INSERTでよい
-// （usernameにDB UNIQUE制約は無いが、computeImportDiffの構造上、既存行と
-// usernameが一致する行はaddedではなくchanged/deleted/restoredに分類される
-// ため、addedに既存usernameと衝突するものは混ざらない）。
+// added（新規追加）だけは対応するDB行が無い＝accountNameで新規INSERTでよい
+// （accountNameにDB UNIQUE制約は無いが、computeImportDiffの構造上、既存行と
+// accountNameが一致する行はaddedではなくchanged/deleted/restoredに分類される
+// ため、addedに既存accountNameと衝突するものは混ざらない）。
 // ─────────────────────────────────────────────────────────────
 
 function insertAccountAuth(input: AccountAuthInput): void {
   const ts = nowStr()
   db.prepare(`
     INSERT INTO account_auth
-      (username, password, comment, number, submission_date, regist_date,
+      (account_name, password, comment, number, submission_date, regist_date,
        company_cd, company_name, company_store_cd, company_store_branch_num,
        non_sync, store_cd, store_name, reg_date, upd_date, delfg)
     VALUES
-      (@username, @password, @comment, @number, @submission_date, @regist_date,
+      (@accountName, @password, @comment, @number, @submission_date, @regist_date,
        @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
        @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
   `).run({ ...input, password: hashPassword(input.password), non_sync: input.non_sync ? 1 : 0, delfg: input.delfg ? 1 : 0, reg_date: ts, upd_date: ts })
@@ -162,7 +163,7 @@ function insertAccountAuth(input: AccountAuthInput): void {
 function updateAccountAuthByIdForImport(id: number, input: AccountAuthInput): void {
   db.prepare(`
     UPDATE account_auth SET
-      username = @username, password = @password, comment = @comment, number = @number,
+      account_name = @accountName, password = @password, comment = @comment, number = @number,
       submission_date = @submission_date, regist_date = @regist_date,
       company_cd = @company_cd, company_name = @company_name,
       company_store_cd = @company_store_cd, company_store_branch_num = @company_store_branch_num,

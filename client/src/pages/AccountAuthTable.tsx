@@ -36,10 +36,13 @@ import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
 
-// テキスト列（診断対象外/状態/操作 は別途renderCellで描画）
+// テキスト列（診断対象外/状態/操作 は別途renderCellで描画）。
+// widthは最小幅として使い、flexも同じ比率で持たせることで、列合計が画面幅より
+// 狭い時は各列が比率どおりに伸びて埋める（内容量では変わらないので、行ごとに
+// 幅がチラつくこともない）
 const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
   { key: 'id', label: 'ID', width: 70 },
-  { key: 'username', label: 'ユーザー名', width: 140 },
+  { key: 'accountName', label: 'ユーザー名', width: 140 },
   { key: 'password', label: 'パスワード', width: 140 },
   { key: 'number', label: 'No.', width: 90 },
   { key: 'submission_date', label: '申込日', width: 110 },
@@ -108,19 +111,19 @@ export default function AccountAuthTable() {
   const [previewLoading, setPreviewLoading] = useState(false)
 
   // No.とユーザー名は別欄・AND条件で絞り込む（onChangeで即時フィルタ）。
-  // 以前は1つの欄でOR検索していたが、usernameに数字を含むデータ
+  // 以前は1つの欄でOR検索していたが、accountNameに数字を含むデータ
   // （例: user000001）とNo.検索が紛らわしく衝突しうるため分離した（2026-07-16）
   // useMemoで固定：data/検索欄以外のstate変更（トースト表示等）で毎回
   // 再計算されるのを防ぐ（2026-07-14、絞り込みが重く感じる問題への対処）
   const [numberSearch, setNumberSearch] = useState('')
-  const [usernameSearch, setUsernameSearch] = useState('')
+  const [accountNameSearch, setAccountNameSearch] = useState('')
   const filteredData = useMemo(() => data?.filter((row) => {
     const numQ = numberSearch.trim().toLowerCase()
-    const userQ = usernameSearch.trim().toLowerCase()
+    const userQ = accountNameSearch.trim().toLowerCase()
     if (numQ && !String(row.number ?? '').includes(numQ)) return false
-    if (userQ && !row.username.toLowerCase().includes(userQ)) return false
+    if (userQ && !row.accountName.toLowerCase().includes(userQ)) return false
     return true
-  }), [data, numberSearch, usernameSearch])
+  }), [data, numberSearch, accountNameSearch])
 
   // マスタ全件など大量の変更を誤って流し込む事故を防ぐための確認閾値
   const APPLY_CONFIRM_THRESHOLD = 50
@@ -187,8 +190,8 @@ export default function AccountAuthTable() {
   const handleSubmit = (input: AccountAuthInput): Promise<void> => {
     return new Promise((resolve, reject) => {
       const message = editTarget
-        ? `「${input.username}」の内容を更新します。よろしいですか？`
-        : `「${input.username}」を追加します。よろしいですか？`
+        ? `「${input.accountName}」の内容を更新します。よろしいですか？`
+        : `「${input.accountName}」を追加します。よろしいですか？`
       setConfirmState({
         message,
         onConfirm: () => {
@@ -211,7 +214,7 @@ export default function AccountAuthTable() {
   // const [remove] = accountAuthApi.useRemoveAccountAuthMutation()
   // const handleDelete = (row: AccountAuth) => {
   //   setConfirmState({
-  //     message: `「${row.username}」を削除しますか？`,
+  //     message: `「${row.accountName}」を削除しますか？`,
   //     onConfirm: () => {
   //       remove(row.id).unwrap()
   //         .then(() => setToast({ msg: '削除しました', severity: 'success' }))
@@ -229,23 +232,21 @@ export default function AccountAuthTable() {
       // 【全列でrenderCellを指定する】DataGridはrenderCellが無い列だと、
       // セルにネイティブのtitle属性を付けてしまい、ブラウザ標準の飾り気の
       // ないツールチップになる。どの列も溢れうる（ユーザー名・販売会社名等）
-      // ため、コメントだけでなく全列にMUIのTooltipを適用する。
-      // 【コメント列だけ空欄時に「—」を出さない】他の列は未入力＝「—」で
-      // 統一しているが、コメントは自由記述欄で空であること自体が普通なので、
-      // わざわざ「—」を出さず空欄のままにする
-      const emptyDisplay = c.key === 'comment' ? '' : '—'
+      // ため、全列にMUIのTooltipを適用する
       return {
         field: c.key,
         headerName: c.label,
-        width: c.width,
-        valueFormatter: (value) => (value === null || value === undefined ? emptyDisplay : value),
-        renderCell: (params) => <OverflowTooltipCell value={String(params.formattedValue ?? emptyDisplay)} />,
+        minWidth: c.width,
+        flex: c.width,
+        valueFormatter: (value) => (value === null || value === undefined ? '' : value),
+        renderCell: (params) => <OverflowTooltipCell value={String(params.formattedValue ?? '')} />,
       }
     }),
     {
       field: 'non_sync',
       headerName: '診断対象外',
-      width: 110,
+      minWidth: 110,
+      flex: 110,
       sortable: false,
       renderCell: (params) => (
         <Chip label={params.row.non_sync ? '対象外' : '通常'} color={params.row.non_sync ? 'warning' : 'default'} size="small" />
@@ -254,7 +255,8 @@ export default function AccountAuthTable() {
     {
       field: 'delfg',
       headerName: '状態',
-      width: 110,
+      minWidth: 110,
+      flex: 110,
       sortable: false,
       renderCell: (params) =>
         params.row.delfg
@@ -298,8 +300,8 @@ export default function AccountAuthTable() {
           sx={{ width: 180 }}
           label="ユーザー名で絞り込み"
           placeholder="例: dealer001"
-          value={usernameSearch}
-          onChange={(e) => setUsernameSearch(e.target.value)}
+          value={accountNameSearch}
+          onChange={(e) => setAccountNameSearch(e.target.value)}
         />
       </Stack>
 
@@ -366,7 +368,7 @@ export default function AccountAuthTable() {
       </Box>
       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
         {filteredData?.length ?? 0} 件
-        {(numberSearch.trim() || usernameSearch.trim()) && ` （全 ${data?.length ?? 0} 件中）`}
+        {(numberSearch.trim() || accountNameSearch.trim()) && ` （全 ${data?.length ?? 0} 件中）`}
       </Typography>
 
       <AccountAuthFormDialog

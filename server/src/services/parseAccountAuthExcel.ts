@@ -21,7 +21,7 @@ import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
 // ─────────────────────────────────────────────────────────────
 
 const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
-  'ユーザー名': 'username', username: 'username',
+  'ユーザー名': 'accountName', username: 'accountName',
   'パスワード': 'password', password: 'password',
   '備考': 'comment', comment: 'comment',
   'No.': 'number', number: 'number',
@@ -45,13 +45,13 @@ const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 // ─────────────────────────────────────────────────────────────
 // 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
 // 表現している箇所がある。結合セルの値は左上端のセルにのみ入っており、
-// 実際の客先ファイルではusername列が結合範囲の左上端に来るため、この注記が
-// usernameとして誤って読み込まれ、実在しないアカウントとして登録されてしまう
+// 実際の客先ファイルではaccountName列が結合範囲の左上端に来るため、この注記が
+// accountNameとして誤って読み込まれ、実在しないアカウントとして登録されてしまう
 // 危険がある（SheetJS移行後も同様。動作確認済み）。
 //
 // 【2026-07-14に一度撤去→2026-07-16復活】当初は自作テストファイル（結合範囲が
-// username列まで及ぶ想定）のみで検証しており、実データ未検証のためYAGNIで
-// 撤去していたが、実際の客先ファイルでもusername列まで結合が巻き込むことが
+// accountName列まで及ぶ想定）のみで検証しており、実データ未検証のためYAGNIで
+// 撤去していたが、実際の客先ファイルでもaccountName列まで結合が巻き込むことが
 // 確認されたため復活させた（詳細はdocs/アカウント認証_Excel取り込み設計.md）。
 //
 // この番号の行は最初からデータとして取り込まない（No.ハードコード方式。
@@ -114,7 +114,7 @@ export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<Accou
     }
     const numText = cellToString(raw.number).trim()
     const record: AccountAuthInput = {
-      username: cellToString(raw.username).trim(),
+      accountName: cellToString(raw.accountName).trim(),
       password: cellToString(raw.password).trim(),
       comment: orNull('comment'),
       number: numText === '' ? null : Number(numText),
@@ -130,7 +130,7 @@ export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<Accou
       delfg: toBool(raw.delfg) || hasCancelDate,
     }
     const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
-    if ((record.username || record.password) && !isKessaban) records.push(record) // 空行・欠番注記行を除外
+    if ((record.accountName || record.password) && !isKessaban) records.push(record) // 空行・欠番注記行を除外
   }
 
   return records

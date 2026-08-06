@@ -27,6 +27,16 @@ const theme = createTheme({
       secondary: '#64748b', // Tailwind slate-500
     },
     divider: '#e2e8f0',     // Tailwind slate-200
+    // 【DataGridのヘッダー背景はcomponents.MuiDataGrid.styleOverridesが効かない】
+    // v9のDataGridはヘッダー背景をCSS変数(--DataGrid-t-header-background-base)
+    // 経由で描画しており、その値はpalette.DataGrid.headerBgから注入される。
+    // styleOverrides側で.MuiDataGrid-columnHeadersに直接backgroundColorを
+    // 当てても、このCSS変数を参照する内部スタイルの方が優先され上書きできない
+    // slate-100(#f1f5f9)はbody(白)との差がわずか数階調しかなく、実画面では
+    // ほぼ見分けがつかなかったため、はっきり差が出るslate-200を使う
+    DataGrid: {
+      headerBg: '#e2e8f0', // Tailwind slate-200
+    },
   },
 
   typography: {
@@ -187,6 +197,44 @@ const theme = createTheme({
     MuiDataGrid: {
       styleOverrides: {
         columnsManagementHeader: { display: 'none' },
+        // 【ヘッダーがbodyと同化する問題への対処】背景色は上のpalette.DataGrid.headerBg
+        // で設定済み（CSS変数経由のためstyleOverridesでは効かない）。文字色はここで
+        // MuiTableHeadと同じ配色に揃える
+        columnHeader: {
+          fontWeight: 600,
+          color: '#475569', // Tailwind slate-600
+        },
+        columnHeaders: {
+          borderBottom: '1px solid #cbd5e1', // Tailwind slate-300。背景色だけでなく境界線でも区切る
+        },
+      },
+    },
+    // ダイアログ各部の既定余白が窮屈なので広げる（MUI標準のstyleOverridesの範囲）
+    MuiDialogTitle: {
+      styleOverrides: {
+        root: {
+          padding: '20px 28px',
+        },
+      },
+    },
+    MuiDialogContent: {
+      styleOverrides: {
+        root: {
+          padding: '20px 28px',
+          // MUI既定は直前にDialogTitleがあるとpaddingTopを0にするが、
+          // タイトルとの間の余白が窮屈になるためこの画面では明示的に確保する
+          '.MuiDialogTitle-root + &': {
+            paddingTop: 20,
+          },
+        },
+      },
+    },
+    MuiDialogActions: {
+      styleOverrides: {
+        root: {
+          padding: '16px 28px',
+          gap: 8,
+        },
       },
     },
   },

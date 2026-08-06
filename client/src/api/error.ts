@@ -25,13 +25,13 @@ export function toApiError(err: unknown, fallback: string): ApiError {
 }
 
 // tsoaの422バリデーションエラーのボディ形
-// 例: { message, details: { "records.$0.username": { message: "..." } } }
+// 例: { message, details: { "records.$0.accountName": { message: "..." } } }
 type ValidateBody = { message?: string; details?: Record<string, { message: string }> }
 
 /**
  * サーバーエラーを「フォーム項目ごとのエラー」に変換する。
  * - 422(tsoa検証): details のキー末尾をフィールド名として拾う
- * - 400(必須欠け・No./username重複などのアプリ層検証): フィールドに紐付けられる
+ * - 400(必須欠け・No./accountName重複などのアプリ層検証): フィールドに紐付けられる
  *   情報を持たないため変換しない。呼び出し側で err.message を全体エラーとして表示する
  * 返り値: { field: message } のマップ（フォームに無いフィールドは呼び出し側で無視）
  */
@@ -42,7 +42,7 @@ export function toFieldErrors(err: unknown): Record<string, string> {
     const details = (err.body as ValidateBody)?.details ?? {}
     const out: Record<string, string> = {}
     for (const [key, val] of Object.entries(details)) {
-      const field = key.split('.').pop() ?? key // "records.$0.username" → "username"
+      const field = key.split('.').pop() ?? key // "records.$0.accountName" → "accountName"
       out[field] = val.message
     }
     return out

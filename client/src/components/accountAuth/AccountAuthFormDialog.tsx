@@ -20,7 +20,7 @@ import { toFieldErrors } from '../../api/error'
 // 「パスワードを変更する」チェックがONの時だけ必須、という状態依存のルール
 // になるため、静的なスキーマでは表現しづらい。submit時に手動でチェックする
 const schema = z.object({
-  username: z.string().min(1, 'ユーザー名は必須です'),
+  accountName: z.string().min(1, 'ユーザー名は必須です'),
   password: z.string(),
   comment: z.string(),
   number: z.string(), // 数値テキスト。空→null、値→number に変換
@@ -38,7 +38,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 const empty: FormValues = {
-  username: '', password: '', comment: '', number: '', submission_date: '', regist_date: '',
+  accountName: '', password: '', comment: '', number: '', submission_date: '', regist_date: '',
   company_cd: '', company_name: '', company_store_cd: '', company_store_branch_num: '',
   non_sync: false, store_cd: '', store_name: '', delfg: false,
 }
@@ -92,7 +92,7 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
     reset(
       target
         ? {
-            username: target.username,
+            accountName: target.accountName,
             // パスワードは空欄で開始する（DBにはハッシュしか無く、元の平文は
             // 復元できないため）。空欄のまま送信＝既存のハッシュを維持する
             password: '',
@@ -127,7 +127,7 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
     }
     try {
       await onSubmit({
-        username: v.username,
+        accountName: v.accountName,
         // 編集で「パスワードを変更する」がOFFなら空文字を送る
         // （サーバー側は空文字を「既存ハッシュを維持」の合図として扱う）
         password: passwordRequired ? v.password : '',
@@ -168,7 +168,7 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
           <Grid container spacing={2} sx={{ mt: 0 }}>
             <Grid size={12}><RhfTextField name="number" control={control} label="No." type="number" size="small" fullWidth /></Grid>
-            <Grid size={half}><RhfTextField name="username" control={control} label="ユーザー名" size="small" fullWidth /></Grid>
+            <Grid size={half}><RhfTextField name="accountName" control={control} label="ユーザー名" size="small" fullWidth /></Grid>
             {/* 【パスワード欄は常にマウントしたまま、disabledだけ切り替える】
                 「パスワードを変更する」チェックのON/OFFで入力欄ごと出し入れすると、
                 マスの高さが変わって以降の項目がガタつく（チラつく）。欄自体は
@@ -185,10 +185,19 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
                   label="パスワードを変更する"
                 />
               )}
+              {/* 【disabled＝薄い文字色だけでは触れないと分かりづらい問題への対処】
+                  背景を塗りつぶし、ヘルパーテキストで理由も添えることで、
+                  クリックして初めて気づく状態を避ける */}
               <RhfTextField
                 name="password" control={control} label={target ? '新しいパスワード' : 'パスワード'}
                 size="small" fullWidth disabled={!!target && !changePassword}
-                sx={target ? { mt: 1 } : undefined}
+                helperText={!!target && !changePassword ? '「パスワードを変更する」を有効にすると入力できます' : undefined}
+                sx={{
+                  ...(target ? { mt: 1 } : {}),
+                  ...(!!target && !changePassword && {
+                    '& .MuiOutlinedInput-root': { bgcolor: 'action.disabledBackground' },
+                  }),
+                }}
               />
             </Grid>
             <Grid size={half}><RhfTextField name="submission_date" control={control} label="申込日" type="date" size="small" fullWidth slotProps={shrink} /></Grid>

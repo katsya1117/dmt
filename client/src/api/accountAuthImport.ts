@@ -12,7 +12,7 @@ export type ValidationError = components['schemas']['ValidationError']
 export type ApplyImportResult = components['schemas']['ApplyImportResult']
 
 // 認証に関わる（事故ると客がログインできなくなる）項目。UIで強調する
-export const AUTH_CRITICAL_FIELDS = ['username', 'password', 'delfg']
+export const AUTH_CRITICAL_FIELDS = ['accountName', 'password', 'delfg']
 
 // パースはサーバー側で行う（ファイルをそのままアップロード）。
 // 2026-07-10計測：20000行規模をクライアント側でパースするとブラウザの

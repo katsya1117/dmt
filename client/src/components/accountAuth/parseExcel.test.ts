@@ -20,7 +20,7 @@ describe('parseAccountAuthExcel', () => {
     )
     const result = await parseAccountAuthExcel(file)
     expect(result).toHaveLength(1)
-    expect(result[0].username).toBe('u001')
+    expect(result[0].accountName).toBe('u001')
     expect(result[0].password).toBe('pw1')
     expect(result[0].company_name).toBe('北日本販売')
     expect(result[0].non_sync).toBe(true)
@@ -32,7 +32,7 @@ describe('parseAccountAuthExcel', () => {
       [['u002', 'pw2', 42, 0]]
     )
     const result = await parseAccountAuthExcel(file)
-    expect(result[0].username).toBe('u002')
+    expect(result[0].accountName).toBe('u002')
     expect(result[0].number).toBe(42)
     expect(result[0].non_sync).toBe(false)
   })
@@ -45,13 +45,13 @@ describe('parseAccountAuthExcel', () => {
     expect(result[0].number).toBeNull()
   })
 
-  it('username も password も空の行は除外する', async () => {
+  it('accountName も password も空の行は除外する', async () => {
     const file = await makeXlsxFile(
       ['ユーザー名', 'パスワード'],
       [['u004', 'pw4'], ['', '']]
     )
     const result = await parseAccountAuthExcel(file)
     expect(result).toHaveLength(1)
-    expect(result[0].username).toBe('u004')
+    expect(result[0].accountName).toBe('u004')
   })
 })

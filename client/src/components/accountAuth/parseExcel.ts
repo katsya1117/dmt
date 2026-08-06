@@ -19,7 +19,7 @@ import knownNumbers from '../../data/accountAuthExcelKnownNumbers.json'
 
 // Excelのヘッダー名（日本語/英語どちらでも）→ フィールドの対応
 const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
-  'ユーザー名': 'username', username: 'username',
+  'ユーザー名': 'accountName', username: 'accountName',
   'パスワード': 'password', password: 'password',
   '備考': 'comment', comment: 'comment',
   'No.': 'number', number: 'number',
@@ -42,8 +42,8 @@ const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
 // 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
 // 表現している箇所がある。結合セルの値は左上端のセルにのみ入っており、
-// 実際の客先ファイルではusername列が結合範囲の左上端に来るため、この注記が
-// usernameとして誤って読み込まれる（2026-07-16、実データで確認済み）。
+// 実際の客先ファイルではaccountName列が結合範囲の左上端に来るため、この注記が
+// accountNameとして誤って読み込まれる（2026-07-16、実データで確認済み）。
 // サーバー側 server/src/services/parseAccountAuthExcel.ts の
 // KESSABAN_NUMBERSと同じ考え方（No.ハードコード方式）。
 // この配列はserver/src/data/accountAuthExcelKnownNumbers.jsonの鏡（MSWモック用）。
@@ -99,7 +99,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
     }
     const numText = cellToString(raw.number).trim()
     const record: AccountAuthInput = {
-      username: cellToString(raw.username).trim(),
+      accountName: cellToString(raw.accountName).trim(),
       password: cellToString(raw.password).trim(),
       comment: orNull('comment'),
       number: numText === '' ? null : Number(numText),
@@ -115,7 +115,7 @@ export async function parseAccountAuthExcel(file: File): Promise<AccountAuthInpu
       delfg: toBool(raw.delfg) || hasCancelDate, // 「削除フラグ」列 or 「解約日」列に値があれば削除扱い
     }
     const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
-    if ((record.username || record.password) && !isKessaban) result.push(record) // 空行・欠番注記行を除外
+    if ((record.accountName || record.password) && !isKessaban) result.push(record) // 空行・欠番注記行を除外
   }
 
   return result

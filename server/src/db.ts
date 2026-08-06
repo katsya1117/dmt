@@ -12,13 +12,13 @@ db.pragma('journal_mode = WAL')
 
 // 実スキーマ（客先MySQLのaccount_authに準拠。SQLite向けに型を読み替え）
 // MySQL: tinyint(1)→INTEGER(0/1) / date・datetime・timestamp→TEXT
-// 【usernameにUNIQUE制約は無い】設計時はUNIQUE前提だったが、客先の旧運用で
-// username重複のまま現役利用されているレコードが実在すると判明した。
+// 【account_nameにUNIQUE制約は無い】設計時はUNIQUE前提だったが、客先の旧運用で
+// account_name重複のまま現役利用されているレコードが実在すると判明した。
 // 重複禁止はDB制約ではなくアプリ層（validateImportRecords）でのみ担保する
 db.exec(`
   CREATE TABLE IF NOT EXISTS account_auth (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-    username                 TEXT NOT NULL,
+    account_name             TEXT NOT NULL,
     password                 TEXT NOT NULL,
     comment                  TEXT,
     number                   INTEGER,
@@ -37,30 +37,37 @@ db.exec(`
   )
 `)
 
+// 既存のローカルdemo.db（旧usernameカラム）を持つ環境向けの移行。
+// データを失わずにカラム名だけ更新する
+const existingCols = (db.prepare('PRAGMA table_info(account_auth)').all() as { name: string }[]).map((c) => c.name)
+if (existingCols.includes('username') && !existingCols.includes('account_name')) {
+  db.exec('ALTER TABLE account_auth RENAME COLUMN username TO account_name')
+}
+
 // 初回のみデモデータを投入
 const count = (db.prepare('SELECT COUNT(*) AS c FROM account_auth').get() as { c: number }).c
 if (count === 0) {
   const insert = db.prepare(`
     INSERT INTO account_auth
-      (username, password, comment, number, submission_date, regist_date,
+      (account_name, password, comment, number, submission_date, regist_date,
        company_cd, company_name, company_store_cd, company_store_branch_num,
        non_sync, store_cd, store_name, reg_date, upd_date, delfg)
     VALUES
-      (@username, @password, @comment, @number, @submission_date, @regist_date,
+      (@account_name, @password, @comment, @number, @submission_date, @regist_date,
        @company_cd, @company_name, @company_store_cd, @company_store_branch_num,
        @non_sync, @store_cd, @store_name, @reg_date, @upd_date, @delfg)
   `)
   const nowStr = new Date().toISOString().slice(0, 19).replace('T', ' ')
   const seed = [
-    { username: 'dealer001', password: 'pw-001', comment: '東日本エリア', number: 1001,
+    { account_name: 'dealer001', password: 'pw-001', comment: '東日本エリア', number: 1001,
       submission_date: '2024-04-01', regist_date: '2024-04-05',
       company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
       non_sync: 0, store_cd: 'S001', store_name: '札幌中央店', reg_date: nowStr, upd_date: nowStr, delfg: 0 },
-    { username: 'dealer002', password: 'pw-002', comment: null, number: 1002,
+    { account_name: 'dealer002', password: 'pw-002', comment: null, number: 1002,
       submission_date: '2024-05-10', regist_date: '2024-05-12',
       company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
       non_sync: 1, store_cd: 'S002', store_name: '仙台駅前店', reg_date: nowStr, upd_date: nowStr, delfg: 0 },
-    { username: 'admin-honsha', password: 'pw-adm', comment: '本社管理', number: 9001,
+    { account_name: 'admin-honsha', password: 'pw-adm', comment: '本社管理', number: 9001,
       submission_date: null, regist_date: '2023-01-01',
       company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
       non_sync: 0, store_cd: null, store_name: null, reg_date: nowStr, upd_date: nowStr, delfg: 0 },

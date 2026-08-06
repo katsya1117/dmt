@@ -19,19 +19,19 @@ const ts = '2026-07-01 09:00:00'
 // 実際の挙動をStorybookでも再現するため
 const initialRows: AccountAuth[] = [
   {
-    id: 1, username: 'dealer001', password: fakeHashPassword('pw-001'), comment: '東日本エリア', number: 1001,
+    id: 1, accountName: 'dealer001', password: fakeHashPassword('pw-001'), comment: '東日本エリア', number: 1001,
     submission_date: '2024-04-01', regist_date: '2024-04-05',
     company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
     non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
   },
   {
-    id: 2, username: 'dealer002', password: fakeHashPassword('pw-002'), comment: null, number: 1002,
+    id: 2, accountName: 'dealer002', password: fakeHashPassword('pw-002'), comment: null, number: 1002,
     submission_date: '2024-05-10', regist_date: '2024-05-12',
     company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
     non_sync: true, store_cd: 'S002', store_name: '仙台駅前店', reg_date: ts, upd_date: ts, delfg: false,
   },
   {
-    id: 3, username: 'admin-honsha', password: fakeHashPassword('pw-adm'), comment: '本社管理', number: 9001,
+    id: 3, accountName: 'admin-honsha', password: fakeHashPassword('pw-adm'), comment: '本社管理', number: 9001,
     submission_date: null, regist_date: '2023-01-01',
     company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
     non_sync: false, store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg: false,
@@ -51,13 +51,13 @@ const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 // 【commentは含めない】備考欄はExcelから来るものではなく運用担当者が手動編集する
 // ものなので、差分検知・上書きの対象にしない（サーバー側 accountAuthDiff.ts と同じ）
 const IMPORT_FIELDS = [
-  'username', 'password', 'number', 'submission_date', 'regist_date',
+  'accountName', 'password', 'number', 'submission_date', 'regist_date',
   'company_cd', 'company_name', 'company_store_cd', 'company_store_branch_num',
   'non_sync', 'store_cd', 'store_name', 'delfg',
 ] as (keyof AccountAuthInput)[]
 
 const FIELD_LABELS: Partial<Record<keyof AccountAuthInput, string>> = {
-  username: 'ユーザー名',
+  accountName: 'ユーザー名',
   number: 'No.',
   submission_date: '申込日',
   regist_date: '登録日',
@@ -119,57 +119,62 @@ function fakeHashPassword(plain: string): string {
   return `mockhash_${(hash >>> 0).toString(16)}`
 }
 
-// 検証: 必須欠け・「新規」username重複・No.重複。
+// 検証: 必須欠け・「新規」accountName重複・No.重複。
 // サーバー側 accountAuthDiff.ts の validateImportRecords と同じロジック
 // （Excel取り込みpreview/apply・手動追加のcreate・更新update/リストアで共通して使う）。
-// usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）ので、
-// 重複拒否はこの関数だけが担う。existingNumbers/existingUsernames を渡すと
+// accountNameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）ので、
+// 重複拒否はこの関数だけが担う。existingNumbers/existingAccountNames を渡すと
 // 「ファイル内」だけでなく「既存データとの重複」も同じロジックで検知できる。
-// 【No.とusernameで一意性チェックの範囲が異なる】No.は削除済み含む全レコード
-// で一意性を見る（過去に使われたNo.の再利用を防ぐ）。usernameは「生きている
-// 行（delfg=false）同士」でのみ行う（削除済みのusernameは再利用可という
+// 【No.とaccountNameで一意性チェックの範囲が異なる】No.は削除済み含む全レコード
+// で一意性を見る（過去に使われたNo.の再利用を防ぐ）。accountNameは「生きている
+// 行（delfg=false）同士」でのみ行う（削除済みのaccountNameは再利用可という
 // 客先の運用要望のため）。詳細はサーバー側参照
 function validateImportRecords(
   records: AccountAuthInput[],
   existingNumbers: ReadonlySet<number> = new Set(),
-  existingUsernames: ReadonlySet<string> = new Set(),
-): { line: number; message: string }[] {
-  const errors: { line: number; message: string }[] = []
-  const firstSeenLine = new Map<string, string>()
-  const firstSeenNumberLine = new Map<number, string>()
-  for (const n of existingNumbers) firstSeenNumberLine.set(n, '既存データ')
-  for (const u of existingUsernames) firstSeenLine.set(u, '既存データ')
+  existingAccountNames: ReadonlySet<string> = new Set(),
+): { line: number; number: number | null; message: string }[] {
+  const errors: { line: number; number: number | null; message: string }[] = []
+  // 「N行目」はユーザーにとって無意味（欠番注記行の除外でExcel上の実際の
+  // 行位置とも一致しない）なので使わない。相手の行はNo./accountNameで示す
+  const firstAccountNameForNumber = new Map<number, string>()
+  const firstNumberLabelForAccountName = new Map<string, string>()
+  for (const n of existingNumbers) firstAccountNameForNumber.set(n, '既存データ')
+  for (const u of existingAccountNames) firstNumberLabelForAccountName.set(u, '既存データ')
+  const numberLabel = (n: number | null) => (n != null ? `No.${n}` : 'No.未設定の行')
   records.forEach((r, i) => {
     const line = i + 1
-    if (!r.username) errors.push({ line, message: `${line}行目：usernameが空です` })
-    if (!r.password) errors.push({ line, message: `${line}行目：passwordが空です` })
+    if (r.number == null) errors.push({ line, number: r.number, message: 'No.が設定されていません' })
+    if (!r.accountName) errors.push({ line, number: r.number, message: `${numberLabel(r.number)}：accountNameが空です` })
+    if (!r.password) errors.push({ line, number: r.number, message: `${numberLabel(r.number)}：passwordが空です` })
     // No.は削除済み行も含めて常にチェックする
     if (r.number != null) {
-      const firstNumber = firstSeenNumberLine.get(r.number)
-      if (firstNumber != null) {
-        errors.push({ line, message: `${line}行目：No.が${firstNumber}と重複しています（No.は一意である必要があります）: ${r.number}` })
+      const firstAccountName = firstAccountNameForNumber.get(r.number)
+      if (firstAccountName != null) {
+        errors.push({ line, number: r.number, message: `No.${r.number}が重複しています（同じNo.の行: ${firstAccountName}）` })
       } else {
-        firstSeenNumberLine.set(r.number, `${line}行目`)
+        firstAccountNameForNumber.set(r.number, r.accountName || '（accountName未設定）')
       }
     }
-    // username重複チェックだけは削除済み行を対象外にする
+    // accountName重複チェックだけは削除済み行を対象外にする
     if (r.delfg) return
-    if (r.username) {
-      const first = firstSeenLine.get(r.username)
+    if (r.accountName) {
+      const first = firstNumberLabelForAccountName.get(r.accountName)
       if (first != null) {
-        errors.push({ line, message: `${line}行目：usernameが${first}と重複しています（新規の重複登録は許可されません）: ${r.username}` })
+        errors.push({ line, number: r.number, message: `accountNameが重複しています（${first}と重複、新規の重複登録は許可されません）: ${r.accountName}` })
       } else {
-        firstSeenLine.set(r.username, `${line}行目`)
+        firstNumberLabelForAccountName.set(r.accountName, numberLabel(r.number))
       }
     }
   })
   return errors
 }
 
-// 手動追加・更新は常に1件だけの検証なので「N行目：」という前置きが意味を
-// 成さない。サーバー側 accountAuthDiff.ts の formatManualValidationMessage と同じロジック
-function formatManualValidationMessage(error: { line: number; message: string }): string {
-  return error.message.replace(/^\d+行目：/, '')
+// 手動追加・更新は常に1件だけの検証なので「No.X：」という前置きは自明で
+// 冗長（フォーム上にNo.欄が見えている）。サーバー側 accountAuthDiff.ts の
+// formatManualValidationMessage と同じロジック
+function formatManualValidationMessage(error: { line: number; number: number | null; message: string }): string {
+  return error.message.replace(/^No\.(\d+|未設定の行)：/, '')
 }
 
 export const accountAuthHandlers = [
@@ -177,30 +182,30 @@ export const accountAuthHandlers = [
   http.post('/api/account-auth/import/preview', async ({ request }) => {
     await delay(150)
     const records = await extractRecords(await request.formData())
-    const byUsername = new Map(rows.map((r) => [r.username, r] as const))
+    const byAccountName = new Map(rows.map((r) => [r.accountName, r] as const))
     const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     const added: { line: number; record: AccountAuthInput }[] = []
-    const changed: { line: number; username: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
-    const deleted: { line: number; username: string; before: AccountAuth; after: AccountAuthInput }[] = []
-    const restored: { line: number; username: string; before: AccountAuth; after: AccountAuthInput }[] = []
+    const changed: { line: number; accountName: string; before: AccountAuth; after: AccountAuthInput; changedFields: string[] }[] = []
+    const deleted: { line: number; accountName: string; before: AccountAuth; after: AccountAuthInput }[] = []
+    const restored: { line: number; accountName: string; before: AccountAuth; after: AccountAuthInput }[] = []
     let unchangedCount = 0
     records.forEach((r, i) => {
       const line = i + 1
       // No.を優先して照合する（サーバー側 accountAuthDiff.ts と同じ理由。
-      // usernameは削除後に再利用されうるため、usernameだけだと間違ったDB行に
+      // accountNameは削除後に再利用されうるため、accountNameだけだと間違ったDB行に
       // マッチする危険がある）
-      const cur = r.number != null ? (byNumber.get(r.number) ?? byUsername.get(r.username)) : byUsername.get(r.username)
+      const cur = r.number != null ? (byNumber.get(r.number) ?? byAccountName.get(r.accountName)) : byAccountName.get(r.accountName)
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
         added.push({ line, record: { ...r, comment: null } })
         return
       }
       if (r.delfg && !cur.delfg) {
-        deleted.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
+        deleted.push({ line, accountName: r.accountName, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 削除`) } })
         return
       }
       if (!r.delfg && cur.delfg) {
-        restored.push({ line, username: r.username, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
+        restored.push({ line, accountName: r.accountName, before: cur, after: { ...r, comment: appendComment(cur.comment, `${todayStr()} 再登録`) } })
         return
       }
       // passwordはDBがハッシュ・Excelは平文なので、比較前にハッシュ化する
@@ -212,7 +217,7 @@ export const accountAuthHandlers = [
       if (changedFields.length) {
         const changeText = buildChangeComment(changedFields, cur, r)
         const after: AccountAuthInput = { ...r, comment: changeText ? appendComment(cur.comment, changeText) : cur.comment }
-        changed.push({ line, username: r.username, before: cur, after, changedFields })
+        changed.push({ line, accountName: r.accountName, before: cur, after, changedFields })
       } else unchangedCount++
     })
     const validationErrors = validateImportRecords(records)
@@ -231,7 +236,7 @@ export const accountAuthHandlers = [
       return HttpResponse.json({ error: '検証エラーがあります', errors }, { status: 400 })
     }
 
-    const byUsername = new Map(rows.map((r) => [r.username, r] as const))
+    const byAccountName = new Map(rows.map((r) => [r.accountName, r] as const))
     const byNumber = new Map(rows.filter((r) => r.number != null).map((r) => [r.number as number, r] as const))
     let inserted = 0
     let updated = 0
@@ -239,7 +244,7 @@ export const accountAuthHandlers = [
     let restored = 0
     records.forEach((r, i) => {
       const line = i + 1
-      const cur = r.number != null ? (byNumber.get(r.number) ?? byUsername.get(r.username)) : byUsername.get(r.username)
+      const cur = r.number != null ? (byNumber.get(r.number) ?? byAccountName.get(r.accountName)) : byAccountName.get(r.accountName)
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
         const comment = commentOverrides[line] ?? null
@@ -292,8 +297,8 @@ export const accountAuthHandlers = [
       return HttpResponse.json({ error: 'records（配列）が必要です' }, { status: 400 })
     }
     const existingNumbers = new Set(rows.map((r) => r.number).filter((n): n is number => n != null))
-    const existingUsernames = new Set(rows.filter((r) => !r.delfg).map((r) => r.username))
-    const errors = validateImportRecords(records, existingNumbers, existingUsernames)
+    const existingAccountNames = new Set(rows.filter((r) => !r.delfg).map((r) => r.accountName))
+    const errors = validateImportRecords(records, existingNumbers, existingAccountNames)
     if (errors.length > 0) {
       return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
     }
@@ -318,8 +323,8 @@ export const accountAuthHandlers = [
     if (!input.delfg) {
       const others = rows.filter((r) => r.id !== id)
       const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
-      const existingUsernames = new Set(others.filter((r) => !r.delfg).map((r) => r.username))
-      const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingUsernames)
+      const existingAccountNames = new Set(others.filter((r) => !r.delfg).map((r) => r.accountName))
+      const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingAccountNames)
       if (errors.length > 0) {
         return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
       }

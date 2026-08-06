@@ -32,12 +32,18 @@ const KIND_COLOR: Record<Kind, 'success' | 'info' | 'error' | 'warning'> = {
   追加: 'success', 変更: 'info', 削除: 'error', リストア: 'warning',
 }
 
-// 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く。
-// delfgは追加/変更/削除/リストアの「区分」チップで既に表現されているため列は作らない）
+// 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く）。
+// delfgは「状態」列として出す。区分チップ（追加/変更/削除/リストア）はDBとの
+// 差分の種類（遷移）を表すだけで、今その行が有効か削除済みかは別の情報。
+// 例えば「変更」行はdelfgがDBとExcelで一致している場合に付くが、それは
+// 「有効のまま項目が変わった」場合と「削除済みのまま項目が変わった（解約後の
+// 台帳訂正）」場合の両方がありえる。区分チップだけでは区別できないため、
+// この列で明示する
 const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) => string }[] = [
-  { key: 'username', label: 'ユーザー名' },
+  { key: 'accountName', label: 'ユーザー名' },
   { key: 'password', label: 'パスワード' },
   { key: 'number', label: 'No.' },
+  { key: 'delfg', label: '状態', format: (v) => (v ? '削除済み' : '有効') },
   { key: 'submission_date', label: '申込日' },
   { key: 'regist_date', label: '登録日' },
   { key: 'company_cd', label: '販社CD' },
@@ -49,12 +55,10 @@ const COLS: { key: keyof AccountAuthInput; label: string; format?: (v: unknown) 
   { key: 'non_sync', label: '診断対象外', format: (v) => (v ? '対象外' : '通常') },
   { key: 'store_cd', label: '販売店CD' },
   { key: 'store_name', label: '販売店名' },
-  // コメントは自由記述欄で空であること自体が普通なので、他の列と違い
-  // 未入力時に「—」を出さず空欄のままにする
   { key: 'comment', label: 'コメント', format: (v) => (v ? String(v) : '') },
 ]
 
-type Row = { id: string; kind: Kind; username: string; record: AccountAuthInput; changedFields: string[]; line: number }
+type Row = { id: string; kind: Kind; accountName: string; record: AccountAuthInput; changedFields: string[]; line: number }
 
 export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Props) {
   const hasChanges = !!diff && (diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length) > 0
@@ -85,12 +89,23 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
     setCommentEdits({})
   }, [diff])
 
+  // 【idはaccountNameでなくlineで作る】accountNameが重複しているレコード（このダイアログ
+  // が検証エラーとして警告する対象そのもの）が2件あると、`種別-accountName`では
+  // 同じidになってしまう。DataGridはidをキーに行を管理するため、idが衝突すると
+  // 片方の行のセル内容がもう片方のレコードのもので上書き表示されてしまう
+  // （ハイライト判定は別途lineで行っているため、ハイライトだけは正しく付くのに
+  // 表示内容だけズレるという分かりにくい壊れ方になる）。lineはファイル内の
+  // 全レコードで一意な通し番号なので、代わりにこちらをidに使う
   const rows: Row[] = diff
     ? [
-        ...diff.added.map((r): Row => ({ id: `追加-${r.record.username}`, kind: '追加', username: r.record.username, record: { ...r.record, comment: commentEdits[r.line] ?? r.record.comment }, changedFields: [], line: r.line })),
-        ...diff.changed.map((c): Row => ({ id: `変更-${c.username}`, kind: '変更', username: c.username, record: { ...c.after, comment: commentEdits[c.line] ?? c.after.comment }, changedFields: c.changedFields, line: c.line })),
-        ...diff.deleted.map((d): Row => ({ id: `削除-${d.username}`, kind: '削除', username: d.username, record: { ...d.after, comment: commentEdits[d.line] ?? d.after.comment }, changedFields: [], line: d.line })),
-        ...diff.restored.map((r): Row => ({ id: `リストア-${r.username}`, kind: 'リストア', username: r.username, record: { ...r.after, comment: commentEdits[r.line] ?? r.after.comment }, changedFields: [], line: r.line })),
+        // 【DBに無い行がdelfg=trueで来るケース】理論上、初回のExcel取り込み時にだけ
+        // 起こる（初回は台帳の全行がDBに無いので、解約済み行もそのまま「追加」になる）。
+        // リストア検知のため、この行自体はDBへの登録が必須（削除しない）。区分は
+        // 「追加」のままで、有効/削除済みの違いは「状態」列（delfg）で示す
+        ...diff.added.map((r): Row => ({ id: `line-${r.line}`, kind: '追加', accountName: r.record.accountName, record: { ...r.record, comment: commentEdits[r.line] ?? r.record.comment }, changedFields: [], line: r.line })),
+        ...diff.changed.map((c): Row => ({ id: `line-${c.line}`, kind: '変更', accountName: c.accountName, record: { ...c.after, comment: commentEdits[c.line] ?? c.after.comment }, changedFields: c.changedFields, line: c.line })),
+        ...diff.deleted.map((d): Row => ({ id: `line-${d.line}`, kind: '削除', accountName: d.accountName, record: { ...d.after, comment: commentEdits[d.line] ?? d.after.comment }, changedFields: [], line: d.line })),
+        ...diff.restored.map((r): Row => ({ id: `line-${r.line}`, kind: 'リストア', accountName: r.accountName, record: { ...r.after, comment: commentEdits[r.line] ?? r.after.comment }, changedFields: [], line: r.line })),
       ]
     : []
 
@@ -145,7 +160,7 @@ export function ImportDiffDialog({ open, diff, onClose, onApply, applying }: Pro
           const isCommentAutoAppended = isComment && params.row.kind !== '追加'
           const isChanged = params.row.changedFields.includes(c.key) || isCommentAutoAppended
           const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key)
-          const display = c.format ? c.format(v) : (v === null || v === undefined || v === '' ? '—' : String(v))
+          const display = c.format ? c.format(v) : (v === null || v === undefined ? '' : String(v))
           const content = (
             <Box
               component="span"

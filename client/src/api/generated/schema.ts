@@ -61,11 +61,11 @@ export interface paths {
         put?: never;
         /**
          * @description 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
-         *     必須項目・No.重複・username重複を弾く。No.は削除済み含む全レコードで
-         *     一意性を見る（過去に使われたNo.の再利用を防ぐ）。usernameは「生きている
-         *     (delfg=false)レコード同士」でのみ判定する（削除済みのusernameは再利用可、
+         *     必須項目・No.重複・accountName重複を弾く。No.は削除済み含む全レコードで
+         *     一意性を見る（過去に使われたNo.の再利用を防ぐ）。accountNameは「生きている
+         *     (delfg=false)レコード同士」でのみ判定する（削除済みのaccountNameは再利用可、
          *     という客先の運用要望のため）。
-         *     usernameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
+         *     accountNameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
          *     ので、重複拒否はこのアプリ層の検証が唯一の砦
          */
         post: operations["Create"];
@@ -85,9 +85,9 @@ export interface paths {
         get?: never;
         /**
          * @description 更新（リストア＝delfg: true→falseも含む）。更新後にdelfg=falseになる
-         *     場合のみ、自分以外のレコードとNo./username重複がないか検証する
+         *     場合のみ、自分以外のレコードとNo./accountName重複がないか検証する
          *     （削除済みのままにする更新や、削除する更新は重複を気にしなくてよい）。
-         *     No.は削除済み含む全レコードで、usernameは生きているレコードのみで判定
+         *     No.は削除済み含む全レコードで、accountNameは生きているレコードのみで判定
          *     する（詳細はcreate()のコメント参照）。
          *     passwordは空文字＝「パスワードを変更する」チェックOFF（クライアント側の
          *     規約）で、既存ハッシュを維持する（実際のハッシュ化・維持判定はリポジトリ
@@ -121,7 +121,7 @@ export interface components {
             number: number | null;
             comment: string | null;
             password: string;
-            username: string;
+            accountName: string;
         };
         AddedRow: {
             /** Format: double */
@@ -145,14 +145,14 @@ export interface components {
             number: number | null;
             comment: string | null;
             password: string;
-            username: string;
+            accountName: string;
             /** Format: double */
             id: number;
         };
         ChangedRow: {
             /** Format: double */
             line: number;
-            username: string;
+            accountName: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
             changedFields: string[];
@@ -160,20 +160,22 @@ export interface components {
         DeletedRow: {
             /** Format: double */
             line: number;
-            username: string;
+            accountName: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
         RestoredRow: {
             /** Format: double */
             line: number;
-            username: string;
+            accountName: string;
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
         ValidationError: {
             /** Format: double */
             line: number;
+            /** Format: double */
+            number: number | null;
             message: string;
         };
         ImportDiff: {
