@@ -1,0 +1,198 @@
+<!doctype html>
+<!--
+  このファイルの役割：ブラウザのJavaScriptから、PHP側（webService/amfphp/gateway.php →
+  webService/amfphp/Services/HelloWorldService.php）を呼び出すサンプル。
+  fetchで送るJSONの serviceName / methodName / parameters が、そのまま
+  HelloWorldService.php の「クラス名 / メソッド名 / 引数」に対応している。
+-->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>amfphp example</title>
+    <script>
+      // 【addEventListener("load", ...) とは】ページの読み込みが完了してから
+      // 中の処理を実行する、というおまじない。この中で関数を定義しているのは、
+      // 下の<body>にあるボタンのonClickから呼べるようにするため
+      // （詳しくは末尾の window.callHelloWorld = ... のコメント参照）
+      window.addEventListener("load", (event) => {
+        // 【async function とは】この関数の中で await（後述）が使えるようにする
+        // 印。「非同期処理（サーバーとの通信のように、結果が返るまで時間が
+        // かかる処理）を、あたかも同期処理のように上から順に書ける」ようにする
+        // JSの仕組み
+        async function callHelloWorld() {
+          // 【PHP側に送るデータの中身】
+          // serviceName：呼び出したいPHPのクラス名（HelloWorldService.php の
+          //   class HelloWorldService に対応）
+          // methodName：呼び出したいPHPのメソッド名（ShowHello()に対応）
+          // parameters：そのメソッドに渡す引数（配列。ShowHello()は引数が
+          //   無いメソッドなので空配列）
+          const data = {
+            serviceName: "HelloWorldService",
+            methodName: "ShowHello",
+            parameters: [],
+          };
+          try {
+            // 【fetch() とは】ブラウザ標準の「サーバーへHTTPリクエストを送る」
+            // 関数。ここでは gateway.php（PHP側の入り口）に対してPOSTしている
+            // 【await とは】「fetchの結果（サーバーからの応答）が返ってくるまで
+            // ここで待つ」という意味。asyncな関数の中でだけ使える
+            const response = await fetch(
+              "../webService/amfphp/gateway.php", // gateway call
+              {
+                method: "POST",
+                // Content-Type: application/json は「これから送る本文は
+                // JSON形式ですよ」とサーバーに伝えるための宣言（PHP側が
+                // 正しく解釈するために必要）
+                headers: { "Content-Type": "application/json" },
+                // 【JSON.stringify() とは】JSのオブジェクト（data）を、
+                // 通信で送れる文字列（JSON形式のテキスト）に変換する関数。
+                // PHP側の json_encode() のJS版と考えるとよい（役割が対）
+                body: JSON.stringify(data), // Objectを JSON に変換して渡す
+              },
+            );
+            // 【response.ok とは】HTTPステータスコードが200番台（成功）かどうかの
+            // 真偽値。falseなら通信自体は届いたがサーバー側がエラーを返した状態
+            if (!response.ok) {
+              // 【throw new Error() とは】ここで処理を中断し、下のcatchに
+              // 処理を飛ばす。テンプレートリテラル（バッククォート `...` の
+              // 中に ${式} を書くと値が展開される書き方）でメッセージを組み立てている
+              throw new Error(`レスポンスステータス：${response.status}`); // エラー
+            }
+            // 【response.json() とは】サーバーから返ってきたJSON文字列を、
+            // JSのオブジェクトに変換し直す関数（PHP側からすると、
+            // HelloWorldService.php が return した連想配列がAMFPHPによって
+            // JSON文字列化され、それをここでオブジェクトに戻している）
+            const result = await response.json(); // 結果JSONをObjectに
+            console.log(result);
+            // result は { result: 0, message: "Hello !" } という形（PHP側の
+            // $ret["result"]/$ret["message"] とそのまま対応）。画面には
+            // message部分だけを表示している
+            document.getElementById("response").textContent = result.message;
+          } catch (error) {
+            // fetch自体が失敗した場合（ネットワークエラー等）や、上のthrowで
+            // 飛んできた場合、ここでまとめて受け止める
+            console.error(error.message); // 例外
+          }
+        }
+
+        async function callParametersMethod() {
+          const data = {
+            serviceName: "HelloWorldService",
+            methodName: "callParametersMethod",
+            // 【parametersの並び順について】この配列の1番目("carcd")が
+            // PHP側 callParametersMethod($args1, $args2) の $args1 に、
+            // 2番目("hogehoge")が $args2 に、それぞれ順番通りに渡される
+            parameters: ["carcd", "hogehoge"],
+          };
+          try {
+            const response = await fetch(
+              "../webService/amfphp/gateway.php", // gateway call
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data), // Objectを JSON に変換して渡す
+              },
+            );
+            if (!response.ok) {
+              throw new Error(`レスポンスステータス：${response.status}`); // エラー
+            }
+            const result = await response.json(); // 結果JSONをObjectに
+            console.log(result);
+            document.getElementById("response").textContent = result.message;
+          } catch (error) {
+            console.error(error.message); // 例外
+          }
+        }
+
+        async function callCarInformation() {
+          // 【document.getElementById() とは】HTML上の要素（下の<body>にある
+          // id="carcd" の入力欄）をJSから取得する、ブラウザ標準のDOM操作関数
+          let carcd = document.getElementById("carcd").value;
+          if (carcd.length != 3) {
+            alert("車名CDを3桁の数字で入力してください。");
+            return;
+          }
+          const data = {
+            serviceName: "HelloWorldService",
+            methodName: "callCarInformation",
+            // PHP側 callCarInformation($carCd) の $carCd に対応する1つだけの引数
+            parameters: [carcd],
+          };
+          try {
+            const response = await fetch(
+              "../webService/amfphp/gateway.php", // gateway call
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data), // Objectを JSON に変換して渡す
+              },
+            );
+            if (!response.ok) {
+              throw new Error(`レスポンスステータス：${response.status}`); // エラー
+            }
+            const result = await response.json(); // 結果JSONをObjectに
+            console.log(result);
+            // 【result.messageを2重にJSON.parseしている理由】
+            // HelloWorldService.php の callCarInformation() を見ると、
+            // $ret["message"] = json_encode($result); と、DB検索結果を
+            // 一度JSON文字列にしてから message に詰めていた。つまり
+            // result全体は普通のJSONだが、その中の message プロパティの
+            // 値自体が「JSON文字列」という入れ子構造になっている。
+            // だからここでもう一段 JSON.parse() して、本来のデータ（配列）に
+            // 戻す必要がある
+            console.log(JSON.parse(result.message));
+            console.log(JSON.stringify(JSON.parse(result.message)));
+            document.getElementById("response").textContent = JSON.stringify(
+              JSON.parse(result.message),
+            );
+          } catch (error) {
+            console.error(error.message); // 例外
+          }
+        }
+
+        // [ORIGINAL] onClick属性からグローバル関数として呼ばれているため、
+        // window スコープに公開する
+        // 【なぜこの3行が必要か】上のcallHelloWorld等は、addEventListenerの
+        // コールバック関数の中だけで通用するローカルな関数（外からは見えない）。
+        // 一方、下の<body>にある <input onClick="callHelloWorld()"> のような
+        // HTML属性からの呼び出しは「windowという一番外側のグローバルな場所に
+        // ある関数」しか呼べない。そこでこの3行で、ローカルな関数をwindowに
+        // 登録し直し、ボタンから呼べるようにしている
+        window.callHelloWorld = callHelloWorld;
+        window.callParametersMethod = callParametersMethod;
+        window.callCarInformation = callCarInformation;
+      });
+    </script>
+  </head>
+  <body>
+    <h1>amfphp JSON access example</h1>
+    <!-- onClick="callHelloWorld()" ＝ このボタンを押すと、上で定義した
+         callHelloWorld() 関数が実行される、というHTML標準のイベント属性 -->
+    <input
+      type="button"
+      value="call hello world server"
+      id="bimButton"
+      onClick="callHelloWorld()"
+      height="100"
+    />
+    <br />
+    <input
+      type="button"
+      value="parameters method call"
+      id="bimButton"
+      onClick="callParametersMethod()"
+      height="100"
+    />
+    <label>車名CD : <input id="carcd" type="text" /></label>
+    <input
+      type="button"
+      value="get car information"
+      id="bimButton"
+      onClick="callCarInformation()"
+      height="100"
+    />
+    <!-- ここにcallHelloWorld等が書き込んだ結果（result.message）が表示される -->
+    <div id="response"></div>
+  </body>
+</html>
