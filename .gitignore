@@ -35,6 +35,10 @@ yarn-error.log*
 # Local demo DB (SQLite)
 server/data/
 
+# 客先の実際の通信境界(DB接続情報・ネットワーク構成)を含むため非公開。
+# ローカル動作確認には docs/legacy-amfphp/webService/config.php（ダミー値）を使う
+docs/legacy-amfphp/webService/config.real.php
+
 # tsoa generated (routes/spec) — dev/buildで自動生成
 server/src/generated/
 

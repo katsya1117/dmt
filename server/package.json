@@ -5,6 +5,8 @@
   "scripts": {
     "tsoa": "tsoa spec-and-routes",
     "dev": "yarn tsoa && tsx watch src/index.ts",
+    "verify:amfphp": "tsx src/scripts/verifyAmfphpClient.ts",
+    "verify:apply-import": "tsx src/scripts/verifyApplyImport.ts",
     "build": "yarn tsoa && tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/generated',{recursive:true});fs.copyFileSync('src/generated/swagger.json','dist/generated/swagger.json')\"",
     "start": "node dist/index.js"
   },

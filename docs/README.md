@@ -13,6 +13,7 @@ d社マニュアルメンテナンスツールの設計・実装ドキュメン�
 | **正式な設計書（外注提出想定）** | [design/](design/) … 要求分析〜詳細設計の工程別に整理した設計書一式。アカウント認証機能を題材にしたパイロット（[学習ノート](設計書メソッド_学習ノート.md)のメソッドを適用） |
 | **まず全体像** | [システム全体図](システム全体図.md) … 初見向けの噛み砕いた図解。正式版は[design/06_システム構成図](design/06_システム構成図.md) |
 | API一覧 | [design/08_API仕様書](design/08_API仕様書.md) … 全エンドポイント一覧・エラー規約・Swagger UI |
+| レガシーPHP(AMFPHP)経由でのAPI実装 | [AMFPHP連携](AMFPHP連携.md) … repository層からAMFPHPを呼ぶ構成・環境切り替え方法・既知の制約 |
 | データの通り道（コード視点） | [データフロー](データフロー.md) … API出口/Express経路/MSW |
 | 画面の作り方（実装の型） | [画面実装パターン](画面実装パターン.md) … 8ファイル構成チェックリスト（フックは実ロジックがある時だけ）・DataGrid実装例。レイヤ構成の正式版は[design/07](design/07_アプリケーション方式設計書.md) |
 | RTK Queryを知らない | [RTK_Query入門](RTK_Query入門.md) … query/mutation・自動生成フック・キャッシュとinvalidatesTagsの仕組み |
@@ -42,7 +43,7 @@ d社マニュアルメンテナンスツールの設計・実装ドキュメン�
 | 画面構成 | 4画面（S1〜S4） | **6親メニュー / 27画面** | 機能の精緻化 |
 | 認証・権限 | 認証なし・ログイン不要 | **認証・権限管理が中核** | 客先で**顧客社員**が一部機能を使うため |
 | ハード構成 | 社内1台に集約 | **社内Windows1台 ＋ 客先軽量デプロイの2拠点** | 客先利用の判明 |
-| デモのデータ源 | （未定） | **B3方式: Express + SQLite**（本番は `repositories/` 差し替え） | 客先DBに未接続のため |
+| デモのデータ源 | （未定） | **B3方式: Express + SQLite** → **account-authはAMFPHP JSON経由に差し替え済み**（`repositories/accountAuth.ts`。他のテーブルは未着手） | 客先DBに未接続のため。2026-08-19、AMFPHPをレガシー資産として再利用する方針に伴い着手（詳細: [AMFPHP連携](AMFPHP連携.md)） |
 | Excel解析 | xlsx (SheetJS) → exceljs | **xlsx (SheetJS)**（SheetJS公式CDN経由でインストール） | 客先台帳に旧.xls形式もあり、.xlsx専用のexceljsでは読めないため再度乗り換え。npm版xlsxの既知CVEはSheetJS公式CDN（cdn.sheetjs.com）から修正済みバージョンを取得することで解消 |
 | React | 18（安定重視で据置） | **19**（依存全面更新） | 全面更新を実施 |
 | HTTP通信 | node-fetch | **Node組み込み fetch** | 不要依存の削除 |
@@ -75,6 +76,7 @@ d社マニュアルメンテナンスツールの設計・実装ドキュメン�
 | 4 | 客先DB(電子マニュアルDB)のCRUD仕様 | 既存AMFPHPが正典（参照待ち） | 顧客側/旧システム |
 | 5 | 顧客サーバーにNode設置可否 | 未確認 | 顧客側 |
 | 6 | account-auth等のスキーマ | account-authは確定（[05_データ型定義書](design/account-auth/05_データ型定義書.md)で客先MySQLの実スキーマを正典化済み）。他のメンテ系テーブルは未着手 | 旧システム（他テーブル分） |
+| 7 | AMFPHPの`AuthSession.php`実体・`target`/`userid`/`key`の値 | 固定値`TODO`（[AMFPHP連携 §6](AMFPHP連携.md#6-未確定事項実環境で確定すべき)） | Linux開発環境（実物のAMFPHPが動いている） |
 
 ---
 

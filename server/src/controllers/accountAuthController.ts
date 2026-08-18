@@ -32,7 +32,7 @@ export class AccountAuthController extends Controller {
   /** 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
   @Get()
   public async list(): Promise<AccountAuth[]> {
-    return listAllAccountAuth()
+    return await listAllAccountAuth()
   }
 
   /** 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
@@ -47,7 +47,7 @@ export class AccountAuthController extends Controller {
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(409, '予期しないDBエラー')
   public async create(@Body() body: CreateAccountAuthBody): Promise<{ inserted: number } | ErrorResponse> {
-    const all = listAllAccountAuth()
+    const all = await listAllAccountAuth()
     const existingNumbers = new Set(all.map((r) => r.number).filter((n): n is number => n != null))
     const existingAccountNames = new Set(all.filter((r) => !r.delfg).map((r) => r.accountName))
     const errors = validateImportRecords(body.records, existingNumbers, existingAccountNames)
@@ -56,7 +56,7 @@ export class AccountAuthController extends Controller {
       return { error: errors.map(formatManualValidationMessage).join(' / ') }
     }
     try {
-      const result = createAccountAuth(body.records)
+      const result = await createAccountAuth(body.records)
       this.setStatus(201)
       return result
     } catch (e: unknown) {
@@ -78,7 +78,7 @@ export class AccountAuthController extends Controller {
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(404, '対象が見つかりません')
   public async update(@Path() id: number, @Body() input: AccountAuthInput): Promise<AccountAuth | ErrorResponse> {
-    const all = listAllAccountAuth()
+    const all = await listAllAccountAuth()
     const current = all.find((r) => r.id === id)
     if (!current) {
       this.setStatus(404)
@@ -99,7 +99,7 @@ export class AccountAuthController extends Controller {
       }
     }
     try {
-      const updated = updateAccountAuth(id, input)
+      const updated = await updateAccountAuth(id, input)
       if (!updated) {
         this.setStatus(404)
         return { error: '対象が見つかりません' }

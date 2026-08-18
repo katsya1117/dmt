@@ -5,6 +5,8 @@ services:
       - "8080:80"
     volumes:
       - php-uploads:/var/www/html/uploads
+      - php-amfphp-data:/var/www/html/data
 
 volumes:
   php-uploads:
+  php-amfphp-data:

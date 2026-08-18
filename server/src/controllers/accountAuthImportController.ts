@@ -29,7 +29,7 @@ export class AccountAuthImportController extends Controller {
   @Post('preview')
   public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff> {
     const records = await parseAccountAuthExcelBuffer(file.buffer)
-    const current = listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
+    const current = await listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
     const diff = computeImportDiff(records, current)
     diff.validationErrors = validateImportRecords(records)
     return diff
@@ -54,7 +54,7 @@ export class AccountAuthImportController extends Controller {
       this.setStatus(400)
       return { error: '検証エラーがあります', errors }
     }
-    const current = listAllAccountAuth()
+    const current = await listAllAccountAuth()
     const diff = computeImportDiff(records, current)
 
     const overrides: Record<number, string> = commentOverrides ? JSON.parse(commentOverrides) : {}
@@ -77,7 +77,7 @@ export class AccountAuthImportController extends Controller {
       }
     }
 
-    return applyAccountAuthImport({
+    return await applyAccountAuthImport({
       added: diff.added.map((a) => a.record),
       changed: diff.changed.map((c) => ({ id: c.before.id, after: c.after })),
       deleted: diff.deleted.map((d) => ({ id: d.before.id, comment: d.after.comment ?? '' })),
