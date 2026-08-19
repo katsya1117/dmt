@@ -204,9 +204,12 @@ class DbManagerTInetUserAuth
                     $result = RESULT_SUCCESS;
                 } else {
                     Log::OUT("t_inet_user_auth update error!");
-                    // [既知の問題] mysql_errno()/mysql_error() はPHP7で廃止された関数（DBConnection.phpと同じ問題）
-                    $errorcode = mysql_errno();
-                    $errormsg = mysql_error();
+                    // [ORIGINAL] mysql_errno()/mysql_error() はPHP7で廃止された関数（DBConnection.phpと同じ問題）。
+                    // PDOに移行済みの現行コードでは呼べないため、DBConnectionが保持しているエラー情報に置き換えた。
+                    // errorcode（数値コード）に相当する値はDBConnection側に個別で残っていないため0のまま
+                    // $errorcode = mysql_errno();
+                    // $errormsg = mysql_error();
+                    $errormsg = $db->errMsg;
                     $result = RESULT_FAILURE;
                     break;
                 }

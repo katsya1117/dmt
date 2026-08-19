@@ -23,66 +23,51 @@ import { hashPassword } from '../utils/hashPassword'
 
 const TARGET_TABLE_ID = 0 // t_inet_user_auth（要確認：t_inet_user_auth_ds3ではないか）
 
+// AccountAuth/AccountAuthInput/PhpRow/PhpInfoの4型で名前・型とも共通のフィールド
+// （id・accountName⇔username・non_sync・delfg・password以外の全部）をここに集約する
+type SharedFields = {
+  comment: string | null
+  number: number | null
+  submission_date: string | null
+  regist_date: string | null
+  company_cd: string | null
+  company_name: string | null
+  company_store_cd: string | null
+  company_store_branch_num: string | null
+  store_cd: string | null
+  store_name: string | null
+}
+
 // 読み取り型（レスポンス＝全カラム常に存在。? は使わず null可は `| null`）
-export type AccountAuth = {
+export type AccountAuth = SharedFields & {
   id: number
   accountName: string
   password: string
-  comment: string | null
-  number: number | null
-  submission_date: string | null
-  regist_date: string | null
-  company_cd: string | null
-  company_name: string | null
-  company_store_cd: string | null
-  company_store_branch_num: string | null
   non_sync: boolean
-  store_cd: string | null
-  store_name: string | null
+  delfg: boolean
   reg_date: string
   upd_date: string
-  delfg: boolean
 }
 
 // 書き込み型（サーバー管理 id/reg_date/upd_date を除く。読み取りと対称。delfgはユーザーが手動編集するため含む）
-export type AccountAuthInput = {
+export type AccountAuthInput = SharedFields & {
   accountName: string
   password: string
-  comment: string | null
-  number: number | null
-  submission_date: string | null
-  regist_date: string | null
-  company_cd: string | null
-  company_name: string | null
-  company_store_cd: string | null
-  company_store_branch_num: string | null
   non_sync: boolean
-  store_cd: string | null
-  store_name: string | null
   delfg: boolean // 論理削除フラグ。ユーザーが手動編集（PUTで論理削除）。DELETE APIは未開放
 }
 
 // AMFPHP(DbManagerTInetUserAuth.load)がSELECTで返す生の行。
 // PHP側はカラム名が今もusername（accountNameへのリネームはこのアプリ側のみ）。
 // 数値・真偽値はDB実装（MySQL/SQLite）により文字列で返ることがあるため緩く受ける
-type PhpRow = {
+type PhpRow = SharedFields & {
   id: number | string
   username: string
   password: string
-  comment: string | null
-  number: number | string | null
-  submission_date: string | null
-  regist_date: string | null
-  company_cd: string | null
-  company_name: string | null
-  company_store_cd: string | null
-  company_store_branch_num: string | null
   non_sync: number | string
-  store_cd: string | null
-  store_name: string | null
+  delfg: number | string
   reg_date: string
   upd_date: string
-  delfg: number | string
 }
 
 function toApi(row: PhpRow): AccountAuth {
@@ -108,22 +93,12 @@ function toApi(row: PhpRow): AccountAuth {
 }
 
 // AMFPHP(DbManagerTInetUserAuth.update)へ渡す1レコード分（$info相当）
-type PhpInfo = {
+type PhpInfo = SharedFields & {
   updatemark: 'INSERT' | 'UPDATE' | 'DELETE'
   id?: number
   username: string
   password: string
-  comment: string | null
-  number: number | null
-  submission_date: string | null
-  regist_date: string | null
-  company_cd: string | null
-  company_name: string | null
-  company_store_cd: string | null
-  company_store_branch_num: string | null
   non_sync: boolean
-  store_cd: string | null
-  store_name: string | null
   delfg: boolean
 }
 

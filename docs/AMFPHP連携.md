@@ -51,14 +51,14 @@
 |---|---|---|
 | `PHP_API_URL` / `AMFPHP_GATEWAY_URL` | `http://localhost:8080`（mock/php-server） | 客先サーバーのURL |
 | `AMFPHP_USERID` / `AMFPHP_KEY` | `TODO`（モックは非空なら通す） | 実際の認証情報（§6参照、未確定） |
-| `AMFPHP_TARGET` | `TODO` | 実際のtarget値（§6参照、未確定） |
+| `AMFPHP_TARGET` | `0`（プライマリDB） | 基本`0`のままでよいはず（§6で意味確定済み） |
 
 ただし以下は**コード配線とは別に確認が必要**（「動くはず」で終わらせず、実機で必ず検証する）：
 
-1. **AuthSession.phpの実体**（§6）。`checkLogin`/`connectionDb`の中身次第では、`amfphpClient.ts`の認証情報の渡し方自体を見直す必要がある
-2. **本物の`DbManagerTInetUserAuth.php`が実際に動く状態か**。`docs/legacy-amfphp/webService/lib/DBConnection.php`で見つかった`mysql_errno()`/`mysql_error()`（PHP7で廃止された関数呼び出し）やPHP4スタイルコンストラクタは、このリポジトリ内の控え（`docs/legacy-amfphp/`配下）では修正済みだが、**客先に実際にデプロイされているコードが同じ状態とは限らない**。本番接続前に要確認
-3. **モックは簡略化した再現に過ぎない**。LPADのフォーマットや電子マニュアル権限の連動削除など、本物固有の業務ロジックまでは再現していないため、モックで通ったからといって本物でも同じ結果になる保証はない
-4. `TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか（§6）
+1. **本物の`DbManagerTInetUserAuth.php`が実際に動く状態か**。`mysql_errno()`/`mysql_error()`（PHP7で廃止された関数呼び出し）やPHP4スタイルコンストラクタは、このリポジトリ内の控え（`docs/legacy-amfphp/`配下）では全ファイル横断で修正・再確認済み（2026-08-20、PHP8.3での構文チェック＋手動精査。PHP8.4のイメージはネットワーク制限で取得できず未検証）。ただし**客先に実際にデプロイされているコードが同じ状態とは限らない**。本番接続前に要確認
+2. **モックは簡略化した再現に過ぎない**。LPADのフォーマットや電子マニュアル権限の連動削除など、本物固有の業務ロジックまでは再現していないため、モックで通ったからといって本物でも同じ結果になる保証はない
+3. `TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか（§6）
+4. `userid`/`key`の実際の値・発行方法（§6）
 
 ## 5. 既知の制約：AMFPHPには部分更新が無い
 
@@ -68,12 +68,15 @@
 
 ## 6. 未確定事項（実環境で確定すべき）
 
-| # | 項目 | 現状の仮値 | 確認先 |
-|---|---|---|---|
-| 1 | `AuthSession.php`の実体（`checkLogin`/`connectionDb`の中身） | 使われ方からの推測のみ | Linux開発環境（実物のAMFPHPが動いている） |
-| 2 | `target`（`connectionDb($target)`の引数）が何を指すか | 固定値`TODO` | 同上 |
-| 3 | `userid`/`key`の実際の値・発行方法 | 固定値`TODO` | 同上 |
-| 4 | `TARGET_TABLE_ID`（`t_inet_user_auth` vs `t_inet_user_auth_ds3`のどちらを使うか） | `0`固定 | 業務仕様確認 |
+`AuthSession.php`の実体は2026-08-20に確認できた（[docs/legacy-amfphp/webService/amfphp/Services/AuthSession.php](legacy-amfphp/webService/amfphp/Services/AuthSession.php)）。分かったこと・残る不明点は以下。
+
+| # | 項目 | 状況 |
+|---|---|---|
+| 1 | `target`（`connectionDb($select)`の引数）の意味 | **確定**。客先/契約単位のコードではなく「0=プライマリDB / 0以外=レプリカDB」の二値だった。`config.ts`の既定値を`'0'`に変更済み |
+| 2 | `userid`/`key`の実際の値・発行方法 | `checkLogin()`が`t_mng_admin`テーブルの`id`/`certificationkey`列と照合していることは分かったが、Express用にどの値を発行してもらうかは未確定。固定値`TODO`のまま |
+| 3 | `ManagerAuth.php`が未入手 | `AuthSession.php`が`require_once`しており、`checkLogin`のログイン失敗時に`ManagerAuth::addUserAuthLogAtId(...)`を呼ぶ。ファイル自体が無いと`require_once`の時点でFatal Errorになるため、本番接続前に入手が必要 |
+| 4 | `R_DB_*`・`LOG_DB_*`・`LOG_R_DB_*`・`HTML_LOG_*`・`REQUEST_CHECK`等の定数が`config.php`に無い | `AuthSession.php`が参照している定数群が、このリポジトリの`docs/legacy-amfphp/webService/config.php`（ダミー版）には定義されていない。`config.real.php`側には存在するはずだが未確認 |
+| 5 | `TARGET_TABLE_ID`（`t_inet_user_auth` vs `t_inet_user_auth_ds3`のどちらを使うか） | 未確認。`0`固定のまま |
 
 ## 7. 関連ドキュメント
 

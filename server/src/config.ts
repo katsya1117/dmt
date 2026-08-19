@@ -13,11 +13,14 @@ export const config = {
     // gateway.phpのURL。mock/php-serverは`${phpApiUrl}/webService/amfphp/gateway.php`と
     // 同じパスで動くようにしてある（本番の客先サーバーもこのパスの想定）
     gatewayUrl: process.env.AMFPHP_GATEWAY_URL || `${process.env.PHP_API_URL || 'http://localhost:8080'}/webService/amfphp/gateway.php`,
-    // TODO: AuthSession.phpの実体（checkLogin/connectionDbの中身）待ち。
-    // 現状は正しい認証方式・target(客先/契約単位?)の意味が未確定のため仮値
+    // AuthSession.php確認済み（2026-08-20）。
+    // target: 客先/契約単位のコードではなく「0=プライマリDB / 0以外=レプリカDB」の二値だった
+    // （connectionDb($select)参照）。書き込みを伴うload/updateは基本0でよいはず
+    target: process.env.AMFPHP_TARGET || '0',
+    // userid/key: t_mng_admin.id / certificationkey と照合される（checkLogin参照）。
+    // 実際にExpress用にどの値を発行してもらうかはまだ未確定のためTODOのまま
     userid: process.env.AMFPHP_USERID || 'TODO',
     key: process.env.AMFPHP_KEY || 'TODO',
-    target: process.env.AMFPHP_TARGET || 'TODO',
   },
 
   // アップロード対象ファイル種別の定義
