@@ -13,10 +13,8 @@ export const config = {
     // gateway.phpのURL。mock/php-serverは`${phpApiUrl}/webService/amfphp/gateway.php`と
     // 同じパスで動くようにしてある（本番の客先サーバーもこのパスの想定）
     gatewayUrl: process.env.AMFPHP_GATEWAY_URL || `${process.env.PHP_API_URL || 'http://localhost:8080'}/webService/amfphp/gateway.php`,
-    // AuthSession.php確認済み（2026-08-20）。
-    // target: 客先/契約単位のコードではなく「0=プライマリDB / 0以外=レプリカDB」の二値だった
-    // （connectionDb($select)参照）。書き込みを伴うload/updateは基本0でよいはず
-    target: process.env.AMFPHP_TARGET || '0',
+    // target(0=プライマリ/1=レプリカ)は環境変数化しない。amfphpClient.tsで
+    // プライマリ固定にしている（理由は同ファイルのコメント参照）
     // userid/key: t_mng_admin.id / certificationkey と照合される（checkLogin参照）。
     // 実際にExpress用にどの値を発行してもらうかはまだ未確定のためTODOのまま
     userid: process.env.AMFPHP_USERID || 'TODO',

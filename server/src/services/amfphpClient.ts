@@ -18,6 +18,12 @@ import { config } from '../config'
 
 const RESULT_SUCCESS = 0
 
+// AuthSession::connectionDb($select)の引数。0=プライマリDB / 0以外=レプリカDB。
+// レプリカを使う積極的な理由が無い（このアプリの規模では負荷分散が不要）上、
+// 書き込み直後に同じデータを読み直す実装（updateAccountAuth等）がレプリカの
+// 反映遅延で古い値を返すリスクがあるため、環境変数では設定不可にしてプライマリ固定にする
+const AMFPHP_TARGET = 0
+
 interface AmfphpEnvelope<T> {
   code: number
   errorcode?: number
@@ -41,7 +47,7 @@ export class AmfphpError extends Error {
 // 位置引数を受け取る規約（docs/legacy-amfphp/webService/DbManagerTInetUserAuth.php参照）。
 // args にはこの3つに続く残りの引数（例: targetTableId, data）を渡す
 export async function callAmfphpService<T>(serviceName: string, methodName: string, args: unknown[]): Promise<T> {
-  const parameters = [[config.amfphp.userid, config.amfphp.key, config.amfphp.target, ...args]]
+  const parameters = [[config.amfphp.userid, config.amfphp.key, AMFPHP_TARGET, ...args]]
 
   const res = await fetch(config.amfphp.gatewayUrl, {
     method: 'POST',

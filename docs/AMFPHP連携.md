@@ -35,13 +35,15 @@
 
 | ファイル | 役割 |
 |---|---|
-| `server/src/config.ts`の`amfphp`セクション | 接続設定（`gatewayUrl`/`userid`/`key`/`target`）。すべて環境変数で上書き可能 |
-| `server/src/services/amfphpClient.ts` | `callAmfphpService(serviceName, methodName, args)`。AMFPHP契約の唯一の実装場所 |
+| `server/src/config.ts`の`amfphp`セクション | 接続設定（`gatewayUrl`/`userid`/`key`）。環境変数で上書き可能。`target`は含まない（§4参照、コード側で固定） |
+| `server/src/services/amfphpClient.ts` | `callAmfphpService(serviceName, methodName, args)`。AMFPHP契約の唯一の実装場所。`target`（プライマリ/レプリカ選択）もここで`0`固定にしている |
 | `server/src/repositories/accountAuth.ts` | account-auth機能の実例。`DbManagerTInetUserAuth`のload/updateを呼び、`AccountAuth`/`AccountAuthInput`型との変換を行う |
 | `server/src/scripts/verifyAmfphpClient.ts`（`yarn verify:amfphp`） | `amfphpClient.ts`単体の疎通確認（load→INSERT→load） |
 | `server/src/scripts/verifyApplyImport.ts`（`yarn verify:apply-import`） | Excel取り込みの削除/リストア（§5参照）が他カラムを壊さないかの確認 |
 | `mock/php-server/webService/amfphp/gateway.php` | AMFPHPゲートウェイ互換のモック（開発用）。本番と同じURLパス（`/webService/amfphp/gateway.php`） |
-| `mock/php-server/webService/amfphp/Services/DbManagerTInetUserAuth.php` | `DbManagerTInetUserAuth`のload/update契約をSQLiteで再現した簡易モック |
+| `mock/php-server/webService/amfphp/Services/AuthSession.php` | 本物の`AuthSession`と同じインターフェース（`checkLogin`/`connectionDb`）のモック。`DbManagerTInetUserAuth`はこれ経由でDB接続を得る（本物の構造をそのまま再現） |
+| `mock/php-server/webService/amfphp/Services/DbManagerTInetUserAuth.php` | `DbManagerTInetUserAuth`のload/update契約をSQLiteで再現した簡易モック。DBアクセスは自前のPDO呼び出しではなく`AuthSession`→`DBConnection`経由 |
+| `mock/php-server/webService/lib/DBConnection.php` | 本物の`DBConnection`と同じインターフェース（`connect`/`query`/`execute`/`close`等）のSQLite向けモック |
 
 ## 4. 環境の切り替え（本物のAMFPHP／DBへ持っていく時）
 
@@ -51,14 +53,16 @@
 |---|---|---|
 | `PHP_API_URL` / `AMFPHP_GATEWAY_URL` | `http://localhost:8080`（mock/php-server） | 客先サーバーのURL |
 | `AMFPHP_USERID` / `AMFPHP_KEY` | `TODO`（モックは非空なら通す） | 実際の認証情報（§6参照、未確定） |
-| `AMFPHP_TARGET` | `0`（プライマリDB） | 基本`0`のままでよいはず（§6で意味確定済み） |
+
+`target`（`AuthSession::connectionDb($select)`の引数。0=プライマリDB/0以外=レプリカDB）は環境変数化していない。`amfphpClient.ts`内で`0`（プライマリ）固定にしている。理由：このアプリの規模ではレプリカで負荷分散する積極的な理由が無い一方、`updateAccountAuth`等が書き込み直後に同じデータを読み直す実装になっており、レプリカの反映遅延で古い値を読んでしまうリスクの方が大きいため（2026-08-27判断）。
 
 ただし以下は**コード配線とは別に確認が必要**（「動くはず」で終わらせず、実機で必ず検証する）：
 
 1. **本物の`DbManagerTInetUserAuth.php`が実際に動く状態か**。`mysql_errno()`/`mysql_error()`（PHP7で廃止された関数呼び出し）やPHP4スタイルコンストラクタは、このリポジトリ内の控え（`docs/legacy-amfphp/`配下）では全ファイル横断で修正・再確認済み（2026-08-20、PHP8.3での構文チェック＋手動精査。PHP8.4のイメージはネットワーク制限で取得できず未検証）。ただし**客先に実際にデプロイされているコードが同じ状態とは限らない**。本番接続前に要確認
 2. **モックは簡略化した再現に過ぎない**。LPADのフォーマットや電子マニュアル権限の連動削除など、本物固有の業務ロジックまでは再現していないため、モックで通ったからといって本物でも同じ結果になる保証はない
-3. `TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか（§6）
-4. `userid`/`key`の実際の値・発行方法（§6）
+3. **本物のAMFPHP JSONプラグインが`parameters`を連想配列として渡してくる前提でよいか（要注意）**。`DbManagerTInetUserAuth.php`・`AuthSession.php`（客先実物のOCR復元版）はどちらも`$info["username"]`・`$arg[0][0]`のような配列アクセスを一貫して使っている。これは本物のJSONプラグインが`json_decode($json, true)`のように連想配列へデコードしていることが前提になっているコードで、もし本物が`stdClass`（`json_decode`の第2引数を省略した場合の既定の挙動）で渡してきていたら、配列アクセスの箇所で`Cannot use object of type stdClass as array`のような実行時エラーになる。このモック（`mock/php-server/webService/amfphp/gateway.php`）は`json_decode(..., true)`を明示しているため問題ないが、**本物が同じ実装とは限らない**。実物の`DbManagerTInetUserAuth.php`が現に配列アクセスで書かれ本番で動いている以上、本物も連想配列で渡している可能性が高いという状況証拠はあるが、確証ではない。本番接続時に最初に疑うべき箇所の1つ
+4. `TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか（§6）
+5. `userid`/`key`の実際の値・発行方法（§6）
 
 ## 5. 既知の制約：AMFPHPには部分更新が無い
 
@@ -72,7 +76,7 @@
 
 | # | 項目 | 状況 |
 |---|---|---|
-| 1 | `target`（`connectionDb($select)`の引数）の意味 | **確定**。客先/契約単位のコードではなく「0=プライマリDB / 0以外=レプリカDB」の二値だった。`config.ts`の既定値を`'0'`に変更済み |
+| 1 | `target`（`connectionDb($select)`の引数）の意味 | **確定**。客先/契約単位のコードではなく「0=プライマリDB / 0以外=レプリカDB」の二値だった。`amfphpClient.ts`内でプライマリ(`0`)固定に決定済み（環境変数化していない、§4参照） |
 | 2 | `userid`/`key`の実際の値・発行方法 | `checkLogin()`が`t_mng_admin`テーブルの`id`/`certificationkey`列と照合していることは分かったが、Express用にどの値を発行してもらうかは未確定。固定値`TODO`のまま |
 | 3 | `ManagerAuth.php`が未入手 | `AuthSession.php`が`require_once`しており、`checkLogin`のログイン失敗時に`ManagerAuth::addUserAuthLogAtId(...)`を呼ぶ。ファイル自体が無いと`require_once`の時点でFatal Errorになるため、本番接続前に入手が必要 |
 | 4 | `R_DB_*`・`LOG_DB_*`・`LOG_R_DB_*`・`HTML_LOG_*`・`REQUEST_CHECK`等の定数が`config.php`に無い | `AuthSession.php`が参照している定数群が、このリポジトリの`docs/legacy-amfphp/webService/config.php`（ダミー版）には定義されていない。`config.real.php`側には存在するはずだが未確認 |
