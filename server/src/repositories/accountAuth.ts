@@ -136,6 +136,18 @@ export async function listAllAccountAuth(): Promise<AccountAuth[]> {
   return rows.map(toApi)
 }
 
+// listAllAccountAuth()はAMFPHP側の不調で「通信自体は成功したが中身が不完全」な結果を
+// 返してくることがある（実運用で確認済み）。No./accountNameの重複チェックやExcel差分計算は
+// この一覧を「DBの現在の全件」として信用しきっているため、空配列がそのまま返ると
+// 「重複なし」「全部新規」と誤判定してしまう。本番のaccount_authが実質0件になることは
+// 想定していないため、空配列は「取得に問題がある」signalとして扱い、検証系の呼び出し元
+// （create/update/Excel取り込み）で処理を中断するために使う
+export function assertAccountAuthListLooksValid(list: AccountAuth[]): void {
+  if (list.length === 0) {
+    throw new Error('account_authの取得に失敗しました（取得件数が0件）。時間をおいて再度お試しください。')
+  }
+}
+
 export async function createAccountAuth(records: AccountAuthInput[]): Promise<{ inserted: number }> {
   const data = records.map((r) => toPhpInfo({ ...r, password: hashPassword(r.password) }, 'INSERT'))
   await callAmfphpService('DbManagerTInetUserAuth', 'update', [TARGET_TABLE_ID, data])

@@ -4,6 +4,7 @@ import {
   listAllAccountAuth,
   createAccountAuth,
   updateAccountAuth,
+  assertAccountAuthListLooksValid,
   // deleteAccountAuth, // ← DELETE未開放。開放時に戻す
   type AccountAuth,
   type AccountAuthInput,
@@ -31,8 +32,16 @@ interface ErrorResponse {
 export class AccountAuthController extends Controller {
   /** 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
   @Get()
-  public async list(): Promise<AccountAuth[]> {
-    return await listAllAccountAuth()
+  @Response<ErrorResponse>(503, '既存データの取得に失敗')
+  public async list(): Promise<AccountAuth[] | ErrorResponse> {
+    const all = await listAllAccountAuth()
+    try {
+      assertAccountAuthListLooksValid(all)
+    } catch (e: unknown) {
+      this.setStatus(503)
+      return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
+    return all
   }
 
   /** 追加（1件もExcel複数件も同じ口）。Excel取り込みと同じ検証関数で
@@ -46,8 +55,15 @@ export class AccountAuthController extends Controller {
   @SuccessResponse(201, 'Created')
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(409, '予期しないDBエラー')
+  @Response<ErrorResponse>(503, '既存データの取得に失敗（重複チェックが信用できないため中断）')
   public async create(@Body() body: CreateAccountAuthBody): Promise<{ inserted: number } | ErrorResponse> {
     const all = await listAllAccountAuth()
+    try {
+      assertAccountAuthListLooksValid(all)
+    } catch (e: unknown) {
+      this.setStatus(503)
+      return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
     const existingNumbers = new Set(all.map((r) => r.number).filter((n): n is number => n != null))
     const existingAccountNames = new Set(all.filter((r) => !r.delfg).map((r) => r.accountName))
     const errors = validateImportRecords(body.records, existingNumbers, existingAccountNames)
@@ -77,8 +93,15 @@ export class AccountAuthController extends Controller {
   @Put('{id}')
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(404, '対象が見つかりません')
+  @Response<ErrorResponse>(503, '既存データの取得に失敗（重複チェックが信用できないため中断）')
   public async update(@Path() id: number, @Body() input: AccountAuthInput): Promise<AccountAuth | ErrorResponse> {
     const all = await listAllAccountAuth()
+    try {
+      assertAccountAuthListLooksValid(all)
+    } catch (e: unknown) {
+      this.setStatus(503)
+      return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
     const current = all.find((r) => r.id === id)
     if (!current) {
       this.setStatus(404)

@@ -70,7 +70,17 @@
 
 対処として、`applyAccountAuthImport`は削除/リストア対象行について**送信前に現在の全カラム値を読み直し（`listAllAccountAuth`）、変更したい列だけ上書きしてから丸ごと送り直す**（`accountAuth.ts`の`toInput`・`currentById`）。`verifyApplyImport.ts`で他カラムが消えないことを確認済み。
 
-## 6. 未確定事項（実環境で確定すべき）
+## 6. 既知の制約：`listAllAccountAuth()`が不完全な結果を返す可能性（本番で確認済み）
+
+2026-08-28、本番環境でCREATE（追加）が成功レスポンスを返すのに一覧の件数が増えない現象が発生。原因は未特定（AMFPHP側かネットワーク経路かは切り分け中）だが、**「通信自体は成功したのに中身が不完全」というケースが実在することが分かった**。
+
+これにより、No./accountNameの重複チェック（`accountAuthController.ts`）とExcel取り込みの差分計算（`accountAuthImportController.ts`）が抱えるリスクが顕在化した：どちらも`listAllAccountAuth()`の結果を「DBの現在の全件」として信用しきっており、結果が不完全でも通信が成功していればエラーにならず、**重複チェックのすり抜け**や**既存行を新規追加と誤判定して二重登録**が起こり得る。
+
+**暫定対処**（2026-08-28実装）：`accountAuth.ts`に`assertAccountAuthListLooksValid()`を追加し、`listAllAccountAuth()`の結果が**空配列**だった場合は「取得に問題がある」signalとして扱い、list（一覧表示）・create・update・import(preview・apply)すべてを503エラーで中断するようにした。本番のaccount_authが実質0件になることは想定していないため（既存レガシーデータ7000件超が既に入っており、物理削除機能も無い）、空配列であること自体を異常検知に使っている。一覧表示も対象にしたのは、これを対象外にすると「一覧はエラーにならず空で表示され、新規追加ダイアログのNo.提案値がその空データから誤って計算される」という別の穴が残るため（2026-08-28、レビューで指摘）。
+
+**この対処で防げないもの**：空でないが一部だけ欠けている（例: 7000件のうち4000件しか返ってこない）ケースは検知できない。これは「件数が正しいか」を判定する独立した基準（客先側の実際の件数等）が無いと原理的に検知できないため、今回のCREATE不具合の根本原因が分かった段階で、より確実な対処に見直す必要がある。
+
+## 7. 未確定事項（実環境で確定すべき）
 
 `AuthSession.php`の実体は2026-08-20に確認できた（[docs/legacy-amfphp/webService/amfphp/Services/AuthSession.php](legacy-amfphp/webService/amfphp/Services/AuthSession.php)）。分かったこと・残る不明点は以下。
 
@@ -80,9 +90,10 @@
 | 2 | `userid`/`key`の実際の値・発行方法 | `checkLogin()`が`t_mng_admin`テーブルの`id`/`certificationkey`列と照合していることは分かったが、Express用にどの値を発行してもらうかは未確定。固定値`TODO`のまま |
 | 3 | `ManagerAuth.php`が未入手 | `AuthSession.php`が`require_once`しており、`checkLogin`のログイン失敗時に`ManagerAuth::addUserAuthLogAtId(...)`を呼ぶ。ファイル自体が無いと`require_once`の時点でFatal Errorになるため、本番接続前に入手が必要 |
 | 4 | `R_DB_*`・`LOG_DB_*`・`LOG_R_DB_*`・`HTML_LOG_*`・`REQUEST_CHECK`等の定数が`config.php`に無い | `AuthSession.php`が参照している定数群が、このリポジトリの`docs/legacy-amfphp/webService/config.php`（ダミー版）には定義されていない。`config.real.php`側には存在するはずだが未確認 |
-| 5 | `TARGET_TABLE_ID`（`t_inet_user_auth` vs `t_inet_user_auth_ds3`のどちらを使うか） | 未確認。`0`固定のまま |
+| 5 | `TARGET_TABLE_ID`（`t_inet_user_auth` vs `t_inet_user_auth_ds3`のどちらを使うか） | **確認済み（2026-08-28）**。`t_inet_user_auth`（`0`固定のまま）で正しい |
+| 6 | CREATE成功レスポンスなのに一覧の件数が増えない（2026-08-28発生） | **原因未特定**。クライアント側キャッシュではない（リロードしても増えない）ことは確認済み。ロードバランサ構成・AMFPHPの生レスポンス・繰り返し実行時の挙動を確認中。§6の暫定対処（空配列検知）はこの不具合の症状の一部を防ぐものであり、根本原因の解決ではない |
 
-## 7. 関連ドキュメント
+## 8. 関連ドキュメント
 
 - レガシーPHPコードの復元・修正の経緯: `docs/legacy-amfphp/`配下
 - account-auth機能のAPI契約・型: [design/account-auth/10_詳細設計.md](design/account-auth/10_詳細設計.md)

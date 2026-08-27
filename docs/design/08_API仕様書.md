@@ -33,12 +33,12 @@
 
 | メソッド | パス | リクエスト | レスポンス | ステータス |
 |---|---|---|---|---|
-| GET | `/api/account-auth` | クエリ`includeDeleted?: boolean` | `AccountAuth[]` | 200 |
-| POST | `/api/account-auth` | `{ records: AccountAuthInput[] }` | `{ inserted: number }` または `{ error }` | 201 / 409 |
-| PUT | `/api/account-auth/{id}` | `AccountAuthInput` | `AccountAuth` または `{ error }` | 200 / 404 / 409 |
+| GET | `/api/account-auth` | クエリ`includeDeleted?: boolean` | `AccountAuth[]` または `{ error }` | 200 / 503 |
+| POST | `/api/account-auth` | `{ records: AccountAuthInput[] }` | `{ inserted: number }` または `{ error }` | 201 / 409 / 503 |
+| PUT | `/api/account-auth/{id}` | `AccountAuthInput` | `AccountAuth` または `{ error }` | 200 / 404 / 409 / 503 |
 | ~~DELETE~~ | ~~`/api/account-auth/{id}`~~ | - | - | **未開放**（コントローラ内でコメントアウト。客先DBで物理削除が不調なため。論理削除は`delfg`を含めてPUTで更新する） |
-| POST | `/api/account-auth/import/preview` | `multipart/form-data`（フィールド名`file`） | `ImportDiff`（差分。DBへの書き込みなし） | 200 |
-| POST | `/api/account-auth/import/apply` | 同上 | `ApplyImportResult` または `{ error, errors? }` | 200 / 400 |
+| POST | `/api/account-auth/import/preview` | `multipart/form-data`（フィールド名`file`） | `ImportDiff`（差分。DBへの書き込みなし） | 200 / 503 |
+| POST | `/api/account-auth/import/apply` | 同上 | `ApplyImportResult` または `{ error, errors? }` | 200 / 400 / 503 |
 
 型定義・差分判定ロジック・関数レベルの詳細は[account-auth/10_詳細設計.md](account-auth/10_詳細設計.md)を参照。
 
@@ -55,7 +55,7 @@
 | 413 | アップロードデータが大きすぎる | multer |
 | 501 | 未実装（処理A/B） | コントローラ／ルート |
 | 502 | 上流（顧客PHP）のエラー | アップロード中継ルートのみ |
-| 503 | 前提となるリソース（Sambaフォルダ）が無い | katashikiルートのみ |
+| 503 | 前提となるリソース（Sambaフォルダ）が無い、またはAMFPHP経由の取得結果が信用できない（0件、詳細は[AMFPHP連携.md](../AMFPHP連携.md)） | katashikiルート／account-authのcreate・update・import |
 
 手書きルートは422を返さない（型検証が無いため）。tsoa移行後はこの非対称性も解消される見込み。
 

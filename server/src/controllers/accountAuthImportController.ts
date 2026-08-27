@@ -2,6 +2,7 @@ import { Controller, FormField, Post, Response, Route, Tags, UploadedFile } from
 import {
   listAllAccountAuth,
   applyAccountAuthImport,
+  assertAccountAuthListLooksValid,
   type ApplyImportResult,
 } from '../repositories/accountAuth'
 import { computeImportDiff, validateImportRecords, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
@@ -27,9 +28,16 @@ export class AccountAuthImportController extends Controller {
   /** 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する。
    *  検証エラーがあっても差分自体は返す（applyで拒否されることを事前に知らせるため） */
   @Post('preview')
-  public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff> {
+  @Response<ImportErrorResponse>(503, '既存データの取得に失敗（差分計算が信用できないため中断）')
+  public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff | ImportErrorResponse> {
     const records = await parseAccountAuthExcelBuffer(file.buffer)
     const current = await listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
+    try {
+      assertAccountAuthListLooksValid(current)
+    } catch (e: unknown) {
+      this.setStatus(503)
+      return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
     const diff = computeImportDiff(records, current)
     diff.validationErrors = validateImportRecords(records)
     return diff
@@ -44,6 +52,7 @@ export class AccountAuthImportController extends Controller {
    *  ファイルをそのままapplyに渡す前提（差し替えた場合は行がズレるため対応外） */
   @Post('apply')
   @Response<ImportErrorResponse>(400, '検証エラー')
+  @Response<ImportErrorResponse>(503, '既存データの取得に失敗（差分計算が信用できないため中断）')
   public async apply(
     @UploadedFile() file: Express.Multer.File,
     @FormField() commentOverrides?: string
@@ -55,6 +64,12 @@ export class AccountAuthImportController extends Controller {
       return { error: '検証エラーがあります', errors }
     }
     const current = await listAllAccountAuth()
+    try {
+      assertAccountAuthListLooksValid(current)
+    } catch (e: unknown) {
+      this.setStatus(503)
+      return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
     const diff = computeImportDiff(records, current)
 
     const overrides: Record<number, string> = commentOverrides ? JSON.parse(commentOverrides) : {}
