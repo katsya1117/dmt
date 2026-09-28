@@ -110,8 +110,8 @@ function extractCommentOverrides(formData: FormData): Record<number, string> {
   return typeof raw === 'string' ? JSON.parse(raw) : {}
 }
 
-// 【本物のMD5ではない】ブラウザで動くモック用の簡易版。実際のハッシュ化は
-// サーバー側 server/src/repositories/accountAuth.ts でNode crypto(MD5)を使う。
+// 【本物のSHA-1ではない】ブラウザで動くモック用の簡易版。実際のハッシュ化は
+// サーバー側 server/src/repositories/accountAuth.ts でNode crypto(SHA-1)を使う。
 // ここでは「平文をそのまま保存しない」という挙動をStorybook上で再現できれば十分
 function fakeHashPassword(plain: string): string {
   let hash = 0
