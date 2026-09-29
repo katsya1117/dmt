@@ -70,6 +70,14 @@ class DBConnection
                     reg_date TEXT, upd_date TEXT
                 )");
             }
+
+            // Excel取り込みの差分無視Noリスト用（仮スキーマ。docs/AMFPHP連携_差分無視リスト.md参照）。
+            // 客先の実テーブルが未確定なため、DbManagerTImportIgnoreNumber.php用に暫定で作る
+            $this->dbh->exec("CREATE TABLE t_import_ignore_number (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                number INTEGER, ignfg INTEGER DEFAULT 0, comment TEXT,
+                reg_date TEXT, upd_date TEXT
+            )");
         }
 
         return $this->status;
