@@ -35,11 +35,18 @@ export async function previewImport(file: File): Promise<ImportDiff> {
 // commentOverrides：プレビューで自動生成コメントを手動編集した場合、
 // { 行番号: 編集後の文字列 } をJSON文字列にして一緒に送る（サーバー側は
 // 再計算した差分にこれを当てはめてから書き込む。詳細はサーバー側コメント参照）
-export async function applyImport(file: File, commentOverrides?: Record<number, string>): Promise<ApplyImportResult> {
+export async function applyImport(
+  file: File,
+  commentOverrides?: Record<number, string>,
+  applyLines?: number[]
+): Promise<ApplyImportResult> {
   const formData = new FormData()
   formData.append('file', file)
   if (commentOverrides && Object.keys(commentOverrides).length > 0) {
     formData.append('commentOverrides', JSON.stringify(commentOverrides))
+  }
+  if (applyLines !== undefined) {
+    formData.append('applyLines', JSON.stringify(applyLines))
   }
   try {
     const res = await http.post<ApplyImportResult>('/api/account-auth/import/apply', formData)

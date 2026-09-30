@@ -4,6 +4,45 @@
  */
 
 export interface paths {
+    "/account-auth/import/ignore-numbers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description 一覧取得（del_fg=1の行は除く。repositories/importIgnoreList.tsで絞り込み済み）。
+         *     メソッド名はlistにしない：tsoaはメソッド名からoperationIdを生成するため、
+         *     AccountAuthController.list()と衝突し生成される型定義が壊れる
+         */
+        get: operations["ListIgnoreNumbers"];
+        put?: never;
+        /** @description 追加 */
+        post: operations["Add"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/account-auth/import/ignore-numbers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description 削除（論理削除。del_fg=1にする。物理削除ではない） */
+        delete: operations["Remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account-auth/import/preview": {
         parameters: {
             query?: never;
@@ -106,11 +145,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        AccountAuthInput: {
-            delfg: boolean;
+        ImportIgnoreNumber: {
+            comment: string | null;
+            /** Format: double */
+            number: number;
+            /** Format: double */
+            id: number;
+        };
+        ImportIgnoreNumberErrorResponse: {
+            error: string;
+        };
+        AddImportIgnoreNumberBody: {
+            /** Format: double */
+            number: number;
+            comment?: string;
+        };
+        SharedFields: {
             store_name: string | null;
             store_cd: string | null;
-            non_sync: boolean;
             company_store_branch_num: string | null;
             company_store_cd: string | null;
             company_name: string | null;
@@ -120,6 +172,10 @@ export interface components {
             /** Format: double */
             number: number | null;
             comment: string | null;
+        };
+        AccountAuthInput: components["schemas"]["SharedFields"] & {
+            delfg: boolean;
+            non_sync: boolean;
             password: string;
             accountName: string;
         };
@@ -128,22 +184,11 @@ export interface components {
             line: number;
             record: components["schemas"]["AccountAuthInput"];
         };
-        AccountAuth: {
-            delfg: boolean;
+        AccountAuth: components["schemas"]["SharedFields"] & {
             upd_date: string;
             reg_date: string;
-            store_name: string | null;
-            store_cd: string | null;
+            delfg: boolean;
             non_sync: boolean;
-            company_store_branch_num: string | null;
-            company_store_cd: string | null;
-            company_name: string | null;
-            company_cd: string | null;
-            regist_date: string | null;
-            submission_date: string | null;
-            /** Format: double */
-            number: number | null;
-            comment: string | null;
             password: string;
             accountName: string;
             /** Format: double */
@@ -187,6 +232,10 @@ export interface components {
             unchangedCount: number;
             validationErrors: components["schemas"]["ValidationError"][];
         };
+        ImportErrorResponse: {
+            error: string;
+            errors?: components["schemas"]["ValidationError"][];
+        };
         ApplyImportResult: {
             /** Format: double */
             inserted: number;
@@ -196,10 +245,6 @@ export interface components {
             deleted: number;
             /** Format: double */
             restored: number;
-        };
-        ImportErrorResponse: {
-            error: string;
-            errors?: components["schemas"]["ValidationError"][];
         };
         ErrorResponse: {
             error: string;
@@ -216,6 +261,79 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ListIgnoreNumbers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportIgnoreNumber"][];
+                };
+            };
+        };
+    };
+    Add: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddImportIgnoreNumberBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown | components["schemas"]["ImportIgnoreNumberErrorResponse"];
+                };
+            };
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportIgnoreNumberErrorResponse"];
+                };
+            };
+        };
+    };
+    Remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     Preview: {
         parameters: {
             query?: never;
@@ -238,7 +356,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportDiff"];
+                    "application/json": components["schemas"]["ImportDiff"] | components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description 既存データの取得に失敗（差分計算が信用できないため中断） */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
                 };
             };
         };
@@ -256,6 +383,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     commentOverrides?: string;
+                    applyLines?: string;
                 };
             };
         };
@@ -271,6 +399,15 @@ export interface operations {
             };
             /** @description 検証エラー */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description 既存データの取得に失敗（差分計算が信用できないため中断） */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -295,7 +432,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AccountAuth"][];
+                    "application/json": components["schemas"]["AccountAuth"][] | components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 既存データの取得に失敗 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -343,6 +489,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description 既存データの取得に失敗（重複チェックが信用できないため中断） */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     Update: {
@@ -380,6 +535,15 @@ export interface operations {
             };
             /** @description 対象が見つかりません */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 既存データの取得に失敗（重複チェックが信用できないため中断） */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

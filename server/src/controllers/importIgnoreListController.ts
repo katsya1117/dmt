@@ -23,9 +23,11 @@ interface ImportIgnoreNumberErrorResponse {
 @Route('account-auth/import/ignore-numbers')
 @Tags('アカウント認証')
 export class ImportIgnoreNumbersController extends Controller {
-  /** 一覧取得（del_fg=1の行は除く。repositories/importIgnoreList.tsで絞り込み済み） */
+  /** 一覧取得（del_fg=1の行は除く。repositories/importIgnoreList.tsで絞り込み済み）。
+   *  メソッド名はlistにしない：tsoaはメソッド名からoperationIdを生成するため、
+   *  AccountAuthController.list()と衝突し生成される型定義が壊れる */
   @Get()
-  public async list(): Promise<ImportIgnoreNumber[]> {
+  public async listIgnoreNumbers(): Promise<ImportIgnoreNumber[]> {
     return listImportIgnoreNumbers()
   }
 
