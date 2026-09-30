@@ -55,7 +55,8 @@ export class AccountAuthImportController extends Controller {
   @Response<ImportErrorResponse>(503, '既存データの取得に失敗（差分計算が信用できないため中断）')
   public async apply(
     @UploadedFile() file: Express.Multer.File,
-    @FormField() commentOverrides?: string
+    @FormField() commentOverrides?: string,
+    @FormField() applyLines?: string
   ): Promise<ApplyImportResult | ImportErrorResponse> {
     const records = await parseAccountAuthExcelBuffer(file.buffer)
     const errors = validateImportRecords(records)
@@ -71,6 +72,15 @@ export class AccountAuthImportController extends Controller {
       return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
     }
     const diff = computeImportDiff(records, current)
+
+    // 差分プレビュー画面で選択された行だけに絞り込む。未指定時は後方互換で全件適用
+    if (applyLines !== undefined) {
+      const allow = new Set<number>(JSON.parse(applyLines))
+      diff.added = diff.added.filter((a) => allow.has(a.line))
+      diff.changed = diff.changed.filter((c) => allow.has(c.line))
+      diff.deleted = diff.deleted.filter((d) => allow.has(d.line))
+      diff.restored = diff.restored.filter((r) => allow.has(r.line))
+    }
 
     const overrides: Record<number, string> = commentOverrides ? JSON.parse(commentOverrides) : {}
     if (Object.keys(overrides).length > 0) {
