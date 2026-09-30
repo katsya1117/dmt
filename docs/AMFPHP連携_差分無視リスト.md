@@ -17,29 +17,54 @@
 
 当初はExpress自身のSQLite（`vehicle`/`katashiki`と同じ、客先DBに触れない閉じた実装）も検討したが、**客先側に将来的にこの用途で使えそうなテーブルを用意してもらう想定がある**ため、最初からAMFPHP経由（`account_auth`と同じ構造）で実装する。
 
-客先の実テーブルはまだ確定していない。`account_auth`（`t_inet_user_auth`）を最初に実装した時と同じやり方（`docs/アカウント認証_Excel取り込み設計.md`参照）で、妥当な仮スキーマを決めて実装し、実物の情報が来たら`server/src/repositories/importIgnoreList.ts`とモックPHP（`mock/php-server/webService/amfphp/Services/DbManagerTImportIgnoreNumber.php`）だけを差し替える。呼び出し元（コントローラ・クライアント）は無改修で済む設計にしてある。
+当初は専用テーブル（`t_import_ignore_number`）を新設する案で仮設計していたが、客先に複数機能が相乗りする汎用キー・バリュー設定テーブル`_properties`が既に存在することが分かった（2026-10-01確認）ため撤回し、以下の共有テーブルに乗せる方針に変更した。実物の情報が来たら`server/src/repositories/importIgnoreList.ts`とモックPHP（`mock/php-server/webService/amfphp/Services/DbManagerProperties.php`）だけを差し替える想定は変わらない。呼び出し元（コントローラ・クライアント）は無改修で済む設計にしてある。
 
-## 仮スキーマ（客先へ提示する契約案）
+## 保存先テーブル：`_properties`（共有の汎用設定テーブル、客先で実在確認済み）
 
+```sql
+CREATE TABLE IF NOT EXISTS `_properties` (
+  `id`            int(10) unsigned NOT NULL AUTO_INCREMENT COMMENT 'ID',
+  `category_key`  varchar(50) COLLATE utf8_bin NOT NULL COMMENT 'カテゴリキー',
+  `category_id`   int(11) NOT NULL COMMENT 'カテゴリID（カテゴリキーとカテゴリIDでUNIQUE）',
+  `value1_1`      text COLLATE utf8_bin NOT NULL COMMENT '値1',
+  `value1_2`      text COLLATE utf8_bin COMMENT '値2',
+  `value1_3`      text COLLATE utf8_bin COMMENT '値3',
+  `value1_4`      text COLLATE utf8_bin COMMENT '値4',
+  `value1_5`      text COLLATE utf8_bin COMMENT '値5',
+  `update_date`   timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新日時',
+  `valid_fg`      tinyint(1) NOT NULL DEFAULT '1' COMMENT '有効/無効フラグ',
+  `del_fg`        tinyint(1) NOT NULL DEFAULT '0' COMMENT '削除フラグ',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `index_unique_category` (`category_key`, `category_id`)
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 ```
-t_import_ignore_number（仮称・客先未確定。要確認）
-  id          INTEGER PRIMARY KEY
-  number      INTEGER NOT NULL   -- アカウントNo（account_auth.numberと同じ意味・同じ値域）
-  ignfg       INTEGER DEFAULT 0  -- 論理削除（無視リストから除外）フラグ。account_auth.delfgと同じ考え方
-  comment     TEXT NULL          -- 無視する理由の任意メモ
-  reg_date    TEXT
-  upd_date    TEXT
-```
 
-- **物理DELETEは使わない**。`account_auth`で論理削除（`delfg`）が採用されているのは、客先側のDB更新の仕組み（他システムとの同期）が物理削除と相性が悪いことに由来しており、このテーブルも同じ客先DB上に乗る以上、同じ制約を受ける前提で設計する。「無視リストから外す」操作は`ignfg`を1に立てるUPDATEとして扱う。一覧取得は`ignfg=0`の行だけを返せば十分で、リストア相当のUIは今回不要。
-- 行の特定は`account_auth`と同じく`id`（DB内部の連番）で行う。`account_auth`が同じ方式で問題なく運用できている実績を踏まえ、ここでも踏襲する。
-- `updatemark: INSERT / UPDATE` のみ使用（`DELETE`は使わない）。AMFPHP側のUPDATE文は全カラム上書き固定のため、`ignfg`だけを変えたい場合も現在の行の全カラムを読み直して送り直す必要がある（`account_auth`の削除/リストア処理と同じパターン）。
+`category_key`＋`category_id`の具体的な使われ方（他機能がどう使っているか）を示す資料・サンプルデータは無い（2026-10-01時点、客先に確認中）。**「他の機能の使い方に合わせる」のではなく、「自分たちの`category_key`の枠の中だけは自由に決めてよい」という前提**で、以下の自己完結した意味づけを採用する。
+
+- `category_key`: 固定文字列`'account_auth_import_ignore_number'`。他機能と衝突しないよう十分に具体的な名前にしている（要確認：実際に衝突していないか客先に確認が必要）
+- `category_id`: 業務的な意味を持たせない、自分たちで管理する連番。採番はDB側の`id`（AUTO_INCREMENT、テーブル全体でグローバルに一意）をそのまま流用する（INSERT直後に採番された`id`を`category_id`へ書き戻す）。理由：`MAX(category_id)+1`方式は同時書き込みで衝突しうるが、`id`はAUTO_INCREMENTが保証するため衝突しない
+- `value1_1`（NOT NULL）: アカウントNo（text型のため文字列化して保存、読み出し時にNumber()へ変換）
+- `value1_2`: 無視する理由の任意コメント（NULL可）
+- `value1_3`〜`value1_5`: 未使用
+- `del_fg`: 無視リストから外す＝1に更新（`account_auth.delfg`と同じ論理削除の考え方。物理DELETEは使わない）
+- `valid_fg`: 役割不明のため関与しない（常にデフォルト値1のまま）
 
 ## AMFPHPサービス契約（仮）
 
-`DbManagerTInetUserAuth`と同じJSON契約（`load`/`update`、`$arg[0] = [userid, key, target, targetTableId, data?]`）を踏襲する。
+`_properties`は共有テーブルのため、`load`は`category_key`による絞り込みを必須引数として持つ（無条件の全件取得はしない）。サービス名は仮称`DbManagerProperties`（客先に既存の汎用サービスがある可能性が高いが、無い前提で暫定実装する。実在が確認でき次第、こちらを差し替える）。
 
-- `load`: `select * from t_import_ignore_number order by id` 相当。全件（`ignfg`問わず）返す。Express側で`ignfg===0`にフィルタする。
-- `update`: `data`は`{updatemark, id?, number, ignfg, comment, reg_date, upd_date}`の配列。`INSERT`で新規登録、`UPDATE`で`ignfg`変更（削除相当）。
+```
+load($arg): $arg[0] = [userid, key, target, categoryKey]
+  → SELECT * FROM _properties WHERE category_key = ? AND del_fg = 0 ORDER BY id
 
-客先の実テーブルが用意でき次第、この契約を客先エンジニアと擦り合わせて確定させる。
+update($arg): $arg[0] = [userid, key, target, data]
+  data = [{ updatemark: "INSERT"|"UPDATE", id?, category_key, category_id?, value1_1?, value1_2?, valid_fg?, del_fg? }, ...]
+  INSERT: category_idは仮値で入れてINSERT→直後に採番されたidをcategory_idへ書き戻すUPDATEを続けて実行
+  UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, del_fg:true}だけでOK）
+```
+
+**UPDATE時の部分更新について（2026-10-01方針転換）**: AMFPHPのインターフェース（JSON契約）自体は`DbManagerTInetUserAuth`を踏襲するが、CRUD処理の中身は新アプリ専用の新規実装であり、旧FLEXアプリとは共有しない（AMFPHPのインターフェースだけ流用し、処理は完全に別物）。そのため`DbManagerTInetUserAuth.update()`の「UPDATE文のSET句が全カラム固定」という制約（旧FLEXアプリ時代のレガシーコードに由来し、既存アプリへの影響を避けるため変更できない）を踏襲する理由が無く、`DbManagerProperties.update()`は渡された列だけを更新する設計にした。これにより`importIgnoreList.ts`の削除処理は、対象行を読み直さず`{id, del_fg: true}`だけ送ればよい。
+
+**今後の課題**: 同じ理由（新アプリ専用の新規実装であり、既存アプリとは非共有）は`account_auth`側（`DbManagerTInetUserAuth`相当）にも当てはまるはずで、`accountAuth.ts`の「現在の行を読み直してから全カラム送り直す」実装（削除/リストア処理、パスワード保持処理）も同様に部分更新化できる可能性がある。ただし影響範囲が大きいため、本機能とは別のコミット群として改めて対応する。
+
+客先の実際のサービスクラス・採番方式が判明したら、このドキュメントと`server/src/repositories/importIgnoreList.ts`・モックPHP（`DbManagerProperties.php`）を合わせて更新する。

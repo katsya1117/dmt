@@ -71,12 +71,19 @@ class DBConnection
                 )");
             }
 
-            // Excel取り込みの差分無視Noリスト用（仮スキーマ。docs/AMFPHP連携_差分無視リスト.md参照）。
-            // 客先の実テーブルが未確定なため、DbManagerTImportIgnoreNumber.php用に暫定で作る
-            $this->dbh->exec("CREATE TABLE t_import_ignore_number (
+            // 複数機能が相乗りする汎用キー・バリュー設定テーブル。
+            // 客先実物のDDLをSQLite向けに変換（COLLATE/ENGINE/COMMENT等のMySQL固有構文は落とす）。
+            // 詳細はdocs/AMFPHP連携_差分無視リスト.md参照
+            $this->dbh->exec("CREATE TABLE _properties (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                number INTEGER, ignfg INTEGER DEFAULT 0, comment TEXT,
-                reg_date TEXT, upd_date TEXT
+                category_key TEXT NOT NULL,
+                category_id INTEGER NOT NULL,
+                value1_1 TEXT NOT NULL,
+                value1_2 TEXT, value1_3 TEXT, value1_4 TEXT, value1_5 TEXT,
+                update_date TEXT,
+                valid_fg INTEGER DEFAULT 1,
+                del_fg INTEGER DEFAULT 0,
+                UNIQUE(category_key, category_id)
             )");
         }
 
