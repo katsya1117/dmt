@@ -60,7 +60,9 @@ load($arg): $arg[0] = [userid, key, target, categoryKey]
 update($arg): $arg[0] = [userid, key, target, data]
   data = [{ updatemark: "INSERT"|"UPDATE", id?, category_key, category_id?, value1_1?, value1_2?, valid_fg?, del_fg? }, ...]
   INSERT: category_idは仮値で入れてINSERT→直後に採番されたidをcategory_idへ書き戻すUPDATEを続けて実行
-  UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, del_fg:true}だけでOK）
+  UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, category_key, del_fg:true}）。
+    WHERE句はid=?に加えcategory_key=?も必須（他機能の行をidだけで誤って
+    書き換えてしまう事故を防ぐため。_properties は複数機能の相乗りテーブル）
 ```
 
 **UPDATE時の部分更新について（2026-10-01方針転換）**: AMFPHPのインターフェース（JSON契約）自体は`DbManagerTInetUserAuth`を踏襲するが、CRUD処理の中身は新アプリ専用の新規実装であり、旧FLEXアプリとは共有しない（AMFPHPのインターフェースだけ流用し、処理は完全に別物）。そのため`DbManagerTInetUserAuth.update()`の「UPDATE文のSET句が全カラム固定」という制約（旧FLEXアプリ時代のレガシーコードに由来し、既存アプリへの影響を避けるため変更できない）を踏襲する理由が無く、`DbManagerProperties.update()`は渡された列だけを更新する設計にした。これにより`importIgnoreList.ts`の削除処理は、対象行を読み直さず`{id, del_fg: true}`だけ送ればよい。

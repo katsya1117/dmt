@@ -105,9 +105,13 @@ class DbManagerProperties
                         }
                     }
                     $values[] = $info['id'];
+                    // _properties は複数機能の相乗りテーブルのため、idだけでなく
+                    // category_keyも一致する行だけを更新する（他機能の行を誤って
+                    // 書き換えてしまう事故を防ぐ）。呼び出し側は必ずcategory_keyを渡すこと
+                    $values[] = $categoryKey;
 
                     $ret = $db->execute(
-                        "update _properties set " . implode(', ', $setParts) . " where id = ?",
+                        "update _properties set " . implode(', ', $setParts) . " where id = ? and category_key = ?",
                         $values
                     );
                 } else {
