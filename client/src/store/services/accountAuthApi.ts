@@ -25,12 +25,18 @@ import {
   type AccountAuthInput,
 } from '../../api/accountAuth'
 import { applyImport, type ApplyImportResult } from '../../api/accountAuthImport'
+import {
+  fetchImportIgnoreNumbers,
+  addImportIgnoreNumber,
+  removeImportIgnoreNumber,
+  type ImportIgnoreNumber,
+} from '../../api/importIgnoreList'
 import type { ApiError } from '../../api/error'
 
 export const accountAuthApi = createApi({
   reducerPath: 'accountAuthApi',
   baseQuery: fakeBaseQuery<ApiError>(),
-  tagTypes: ['AccountAuth'],
+  tagTypes: ['AccountAuth', 'ImportIgnoreNumbers'],
   endpoints: (builder) => ({
     // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
     accountAuthList: builder.query<AccountAuth[], void>({
@@ -79,15 +85,51 @@ export const accountAuthApi = createApi({
       invalidatesTags: ['AccountAuth'],
     }),
 
-    applyAccountAuthImportDiff: builder.mutation<ApplyImportResult, { file: File; commentOverrides?: Record<number, string> }>({
-      queryFn: async ({ file, commentOverrides }) => {
+    applyAccountAuthImportDiff: builder.mutation<
+      ApplyImportResult,
+      { file: File; commentOverrides?: Record<number, string>; applyLines?: number[] }
+    >({
+      queryFn: async ({ file, commentOverrides, applyLines }) => {
         try {
-          return { data: await applyImport(file, commentOverrides) }
+          return { data: await applyImport(file, commentOverrides, applyLines) }
         } catch (err) {
           return { error: err as ApiError }
         }
       },
       invalidatesTags: ['AccountAuth'],
+    }),
+
+    importIgnoreNumbers: builder.query<ImportIgnoreNumber[], void>({
+      queryFn: async () => {
+        try {
+          return { data: await fetchImportIgnoreNumbers() }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      providesTags: ['ImportIgnoreNumbers'],
+    }),
+
+    addImportIgnoreNumber: builder.mutation<void, { number: number; comment?: string }>({
+      queryFn: async ({ number, comment }) => {
+        try {
+          return { data: await addImportIgnoreNumber(number, comment) }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      invalidatesTags: ['ImportIgnoreNumbers'],
+    }),
+
+    removeImportIgnoreNumber: builder.mutation<void, number>({
+      queryFn: async (id) => {
+        try {
+          return { data: await removeImportIgnoreNumber(id) }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      invalidatesTags: ['ImportIgnoreNumbers'],
     }),
   }),
 })
