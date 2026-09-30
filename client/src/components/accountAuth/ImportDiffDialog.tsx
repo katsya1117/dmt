@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -11,24 +11,32 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
+import Switch from "@mui/material/Switch";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import {
   DataGrid,
   useGridApiRef,
   GridPreferencePanelsValue,
   type GridColDef,
+  type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import type { ImportDiff } from "../../api/accountAuthImport";
 import { AUTH_CRITICAL_FIELDS } from "../../api/accountAuthImport";
 import type { AccountAuthInput } from "../../api/accountAuth";
 import { OverflowTooltipCell } from "../dataGrid/OverflowTooltipCell";
+import { accountAuthApi } from "../../store/services/accountAuthApi";
 
 type Props = {
   open: boolean;
   diff: ImportDiff | null;
   onClose: () => void;
-  /** 承認。コメント欄を手動編集していた場合は { 行番号: 編集後の文字列 } を渡す */
-  onApply: (commentOverrides: Record<number, string>) => void;
+  /** 承認。コメント欄を手動編集していた場合は { 行番号: 編集後の文字列 } を渡す。
+   *  applyLinesはチェックが入っている行のファイル内行番号(line)一覧 */
+  onApply: (
+    commentOverrides: Record<number, string>,
+    applyLines: number[],
+  ) => void;
   applying: boolean;
 };
 
@@ -91,6 +99,9 @@ export function ImportDiffDialog({
   onApply,
   applying,
 }: Props) {
+  const { data: ignoreNumbers = [] } = accountAuthApi.useImportIgnoreNumbersQuery();
+  const ignoreSet = useMemo(() => new Set(ignoreNumbers.map((e) => e.number)), [ignoreNumbers]);
+
   const hasChanges =
     !!diff &&
     diff.added.length +
@@ -194,6 +205,41 @@ export function ImportDiffDialog({
       ]
     : [];
 
+  // 選択状態（適用可否の唯一の情報源）。diffが新しく来た時だけ初期化する。
+  // 無視リストにNoが含まれる行はデフォルトでOFF、それ以外はON。
+  // 【ignoreSetを依存配列に入れない】無視リストを開いたまま編集すると、
+  // 既に手動でチェックを入れ直した内容が消えてしまうため、diffが変わった
+  // 時だけ初期化する（要件どおり、無視リストの変更が選択状態を上書きしない）
+  const [selectionModel, setSelectionModel] = useState<GridRowSelectionModel>({
+    type: "include",
+    ids: new Set(),
+  });
+  useEffect(() => {
+    if (!diff) {
+      setSelectionModel({ type: "include", ids: new Set() });
+      return;
+    }
+    const ids = new Set(
+      rows
+        .filter(
+          (r) => r.record.number == null || !ignoreSet.has(r.record.number),
+        )
+        .map((r) => r.id),
+    );
+    setSelectionModel({ type: "include", ids });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diff]);
+
+  // マスクスイッチ：表示フィルタ専用。選択状態(selectionModel)には一切触れない
+  // （「適用されるかどうか」はチェックボックスの状態だけが真実の情報源、という
+  // 二重管理を避ける設計のため）
+  const [maskIgnored, setMaskIgnored] = useState(false);
+  const visibleRows = maskIgnored
+    ? rows.filter(
+        (r) => r.record.number == null || !ignoreSet.has(r.record.number),
+      )
+    : rows;
+
   const processRowUpdate = (newRow: Row) => {
     setCommentEdits((prev) => ({
       ...prev,
@@ -207,6 +253,11 @@ export function ImportDiffDialog({
   // 「変更なし」扱いの）行がエラー対象になった場合、ハイライトする行自体が
   // 画面に無いため反映されない。その場合も下の検証エラー一覧には文章で出る
   const errorLines = new Set((diff?.validationErrors ?? []).map((e) => e.line));
+
+  // チェックが入っている行だけを、適用対象のファイル内行番号(line)に変換する
+  const selectedLines = rows
+    .filter((r) => selectionModel.ids.has(r.id))
+    .map((r) => r.line);
 
   const columns: GridColDef<Row>[] = [
     {
@@ -301,7 +352,21 @@ export function ImportDiffDialog({
           この画面ではまだDBに書き込みません。内容を確認してください（★の付いた認証系の変更は特に注意）。
         </Alert>
         {/* 列表示設定は表から独立させ、表の右上にアイコンのみで置く（AccountAuthTable.tsxと同じ見た目に統一） */}
-        <Stack direction="row" sx={{ mb: 0.5, justifyContent: "flex-end" }}>
+        <Stack
+          direction="row"
+          sx={{ mb: 0.5, alignItems: "center", justifyContent: "flex-end" }}
+        >
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={maskIgnored}
+                onChange={(e) => setMaskIgnored(e.target.checked)}
+              />
+            }
+            label="無視リストの行を隠す"
+            sx={{ mr: 1 }}
+          />
           <Tooltip title="列表示設定">
             <IconButton
               size="small"
@@ -320,17 +385,29 @@ export function ImportDiffDialog({
         <Box sx={{ height: "60vh" }}>
           <DataGrid
             apiRef={apiRef}
-            rows={rows}
+            rows={visibleRows}
             columns={columns}
             density="compact"
+            checkboxSelection
+            rowSelectionModel={selectionModel}
+            onRowSelectionModelChange={setSelectionModel}
             disableRowSelectionOnClick
-            getRowClassName={(params) =>
-              errorLines.has(params.row.line) ? "import-error-row" : ""
-            }
+            getRowClassName={(params) => {
+              if (errorLines.has(params.row.line)) return "import-error-row";
+              if (
+                params.row.record.number != null &&
+                ignoreSet.has(params.row.record.number)
+              )
+                return "import-ignored-row";
+              return "";
+            }}
             sx={{
               "& .import-error-row": {
                 bgcolor: "error.light",
                 "&:hover": { bgcolor: "error.light" },
+              },
+              "& .import-ignored-row": {
+                opacity: 0.55,
               },
             }}
             processRowUpdate={processRowUpdate}
@@ -399,8 +476,13 @@ export function ImportDiffDialog({
         </Button>
         <Button
           variant="contained"
-          onClick={() => onApply(commentEdits)}
-          disabled={!hasChanges || hasValidationErrors || applying}
+          onClick={() => onApply(commentEdits, selectedLines)}
+          disabled={
+            !hasChanges ||
+            hasValidationErrors ||
+            applying ||
+            selectedLines.length === 0
+          }
         >
           {applying ? "適用中…" : "この内容で適用"}
         </Button>

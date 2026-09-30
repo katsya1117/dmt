@@ -154,9 +154,9 @@ export default function AccountAuthTable() {
     }
   }
 
-  const doApply = (commentOverrides: Record<number, string>) => {
+  const doApply = (commentOverrides: Record<number, string>, applyLines: number[]) => {
     if (!pendingFile) return
-    applyImportDiff({ file: pendingFile, commentOverrides }).unwrap()
+    applyImportDiff({ file: pendingFile, commentOverrides, applyLines }).unwrap()
       .then((r) => {
         setDiffOpen(false)
         setDiff(null)
@@ -166,14 +166,17 @@ export default function AccountAuthTable() {
       .catch((err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }))
   }
 
-  const handleApply = (commentOverrides: Record<number, string>) => {
+  // changeCountは「選択された件数」（＝実際にDBへ反映される件数）を見る。
+  // diff全体の件数で出すと、一部の行だけ選択した場合に確認メッセージの件数が
+  // 実態と合わなくなるため
+  const handleApply = (commentOverrides: Record<number, string>, applyLines: number[]) => {
     if (!pendingFile || !diff) return
-    const changeCount = diff.added.length + diff.changed.length + diff.deleted.length + diff.restored.length
+    const changeCount = applyLines.length
     if (changeCount >= APPLY_CONFIRM_THRESHOLD) {
-      setConfirmState({ message: `${changeCount}件の変更を適用します。よろしいですか？`, onConfirm: () => doApply(commentOverrides) })
+      setConfirmState({ message: `${changeCount}件の変更を適用します。よろしいですか？`, onConfirm: () => doApply(commentOverrides, applyLines) })
       return
     }
-    doApply(commentOverrides)
+    doApply(commentOverrides, applyLines)
   }
 
   const openAdd = () => { setEditTarget(null); setDialogOpen(true) }
