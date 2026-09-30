@@ -21,11 +21,13 @@ import {
   type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import PlaylistRemoveIcon from "@mui/icons-material/PlaylistRemove";
 import type { ImportDiff } from "../../api/accountAuthImport";
 import { AUTH_CRITICAL_FIELDS } from "../../api/accountAuthImport";
 import type { AccountAuthInput } from "../../api/accountAuth";
 import { OverflowTooltipCell } from "../dataGrid/OverflowTooltipCell";
 import { accountAuthApi } from "../../store/services/accountAuthApi";
+import { ImportIgnoreNumbersDialog } from "./ImportIgnoreNumbersDialog";
 
 type Props = {
   open: boolean;
@@ -234,6 +236,7 @@ export function ImportDiffDialog({
   // （「適用されるかどうか」はチェックボックスの状態だけが真実の情報源、という
   // 二重管理を避ける設計のため）
   const [maskIgnored, setMaskIgnored] = useState(false);
+  const [ignoreListDialogOpen, setIgnoreListDialogOpen] = useState(false);
   const visibleRows = maskIgnored
     ? rows.filter(
         (r) => r.record.number == null || !ignoreSet.has(r.record.number),
@@ -339,6 +342,7 @@ export function ImportDiffDialog({
   ];
 
   return (
+    <>
     <Dialog
       open={open}
       onClose={onClose}
@@ -367,6 +371,19 @@ export function ImportDiffDialog({
             label="無視リストの行を隠す"
             sx={{ mr: 1 }}
           />
+          <Tooltip title="無視リスト管理">
+            <IconButton
+              size="small"
+              aria-label="無視リスト管理"
+              onClick={() => setIgnoreListDialogOpen(true)}
+              sx={{
+                color: "text.secondary",
+                "&:hover": { bgcolor: "action.hover" },
+              }}
+            >
+              <PlaylistRemoveIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="列表示設定">
             <IconButton
               size="small"
@@ -488,5 +505,10 @@ export function ImportDiffDialog({
         </Button>
       </DialogActions>
     </Dialog>
+    <ImportIgnoreNumbersDialog
+      open={ignoreListDialogOpen}
+      onClose={() => setIgnoreListDialogOpen(false)}
+    />
+    </>
   );
 }
