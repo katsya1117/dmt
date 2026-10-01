@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "tsoa": "tsoa spec-and-routes",
-    "dev": "yarn tsoa && tsx --env-file-if-exists=.env watch src/index.ts",
+    "dev": "yarn tsoa && tsx watch --env-file-if-exists=.env src/index.ts",
     "verify:amfphp": "tsx --env-file-if-exists=.env src/scripts/verifyAmfphpClient.ts",
     "verify:apply-import": "tsx --env-file-if-exists=.env src/scripts/verifyApplyImport.ts",
     "build": "yarn tsoa && tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/generated',{recursive:true});fs.copyFileSync('src/generated/swagger.json','dist/generated/swagger.json')\"",
