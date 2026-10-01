@@ -7,7 +7,7 @@ define('ERROR_LOGIN_STATE_MISSMATCH', 7);
 // 複数機能が相乗りする汎用キー・バリュー設定テーブル `_properties` 用モック。
 // 客先に実在するテーブルだが、読み書き用のAMFPHPサービスクラスが既にあるかは
 // 未確認（2026-10-01時点）。ある前提が崩れた場合に備え、無い前提で暫定実装する。
-// 詳細・category_key/category_idの意味づけはdocs/AMFPHP連携_差分無視リスト.md参照。
+// 詳細・category_key/category_idの意味づけはdocs/AMFPHP連携_差分除外リスト.md参照。
 //
 // 【他のDbManagerXxxとの違い】_properties は複数機能の相乗りテーブルのため、
 // load() は対象を絞り込む categoryKey を必須引数に取る（他カテゴリの行を
@@ -77,7 +77,7 @@ class DbManagerProperties
                     // 値が噛み合わない＝既存の運用慣習と見た目が揃わないため）。
                     // 【採番衝突について】MAX()+1方式は同時書き込みで衝突しうるが、この
                     // テーブルはENGINE=MyISAMでトランザクション非対応な上、この機能の
-                    // 書き込み頻度は低い（運用担当者が無視リストを編集する程度）ため許容する
+                    // 書き込み頻度は低い（運用担当者が除外リストを編集する程度）ため許容する
                     $maxRows = $db->query(
                         "select max(category_id) as max_id from _properties where category_key = ?",
                         array($categoryKey)
@@ -125,7 +125,7 @@ class DbManagerProperties
                         $values
                     );
                 } else {
-                    // 物理DELETEは意図的にサポートしない（docs/AMFPHP連携_差分無視リスト.md参照）
+                    // 物理DELETEは意図的にサポートしない（docs/AMFPHP連携_差分除外リスト.md参照）
                     continue;
                 }
 

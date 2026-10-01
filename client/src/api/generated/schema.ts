@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/account-auth/import/ignore-numbers": {
+    "/account-auth/import/exclude-numbers": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,11 +12,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * @description 一覧取得（del_fg=1の行は除く。repositories/importIgnoreList.tsで絞り込み済み）。
+         * @description 一覧取得（del_fg=1の行は除く。repositories/importExcludeList.tsで絞り込み済み）。
          *     メソッド名はlistにしない：tsoaはメソッド名からoperationIdを生成するため、
          *     AccountAuthController.list()と衝突し生成される型定義が壊れる
          */
-        get: operations["ListIgnoreNumbers"];
+        get: operations["ListExcludeNumbers"];
         put?: never;
         /** @description 追加 */
         post: operations["Add"];
@@ -26,7 +26,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/account-auth/import/ignore-numbers/{id}": {
+    "/account-auth/import/exclude-numbers/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -145,17 +145,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ImportIgnoreNumber: {
+        ImportExcludeNumber: {
             comment: string | null;
             /** Format: double */
             number: number;
             /** Format: double */
             id: number;
         };
-        ImportIgnoreNumberErrorResponse: {
+        ImportExcludeNumberErrorResponse: {
             error: string;
         };
-        AddImportIgnoreNumberBody: {
+        AddImportExcludeNumberBody: {
             /** Format: double */
             number: number;
             comment?: string;
@@ -261,7 +261,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    ListIgnoreNumbers: {
+    ListExcludeNumbers: {
         parameters: {
             query?: never;
             header?: never;
@@ -276,7 +276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportIgnoreNumber"][];
+                    "application/json": components["schemas"]["ImportExcludeNumber"][];
                 };
             };
         };
@@ -290,7 +290,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AddImportIgnoreNumberBody"];
+                "application/json": components["schemas"]["AddImportExcludeNumberBody"];
             };
         };
         responses: {
@@ -300,7 +300,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown | components["schemas"]["ImportIgnoreNumberErrorResponse"];
+                    "application/json": unknown | components["schemas"]["ImportExcludeNumberErrorResponse"];
                 };
             };
             /** @description 検証エラー */
@@ -309,7 +309,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ImportIgnoreNumberErrorResponse"];
+                    "application/json": components["schemas"]["ImportExcludeNumberErrorResponse"];
                 };
             };
         };

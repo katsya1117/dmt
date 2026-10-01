@@ -1,19 +1,19 @@
 import { callAmfphpService } from "../services/amfphpClient";
 
 // ─────────────────────────────────────────────────────────────
-// Excel取り込みの差分無視Noリスト用リポジトリ。_properties（客先の汎用設定
+// Excel取り込みの差分除外Noリスト用リポジトリ。_properties（客先の汎用設定
 // テーブル）をDbManagerProperties経由で読み書きする。詳細・category_key/
-// category_idの意味づけはdocs/AMFPHP連携_差分無視リスト.md参照。
+// category_idの意味づけはdocs/AMFPHP連携_差分除外リスト.md参照。
 // - 物理DELETEはしない。削除は論理削除（del_fg=1）
 // - DbManagerProperties.updateは本当の部分更新に対応しているため、削除は
 //   対象行を読み直さず {id, del_fg: true} だけ送ればよい
 // ─────────────────────────────────────────────────────────────
 
 // 他機能と衝突しないよう十分に具体的な名前にしている（要確認：客先で本当に
-// 衝突していないか未確認。docs/AMFPHP連携_差分無視リスト.md参照）
-const CATEGORY_KEY = "account_auth_import_ignore_number";
+// 衝突していないか未確認。docs/AMFPHP連携_差分除外リスト.md参照）
+const CATEGORY_KEY = "account_auth_import_exclude_number";
 
-export type ImportIgnoreNumber = {
+export type ImportExcludeNumber = {
   id: number;
   number: number;
   comment: string | null;
@@ -28,7 +28,7 @@ type PhpRow = {
   del_fg: number | string;
 };
 
-function toApi(row: PhpRow): ImportIgnoreNumber {
+function toApi(row: PhpRow): ImportExcludeNumber {
   return {
     id: Number(row.id),
     number: Number(row.value1_1),
@@ -36,14 +36,14 @@ function toApi(row: PhpRow): ImportIgnoreNumber {
   };
 }
 
-export async function listImportIgnoreNumbers(): Promise<ImportIgnoreNumber[]> {
+export async function listImportExcludeNumbers(): Promise<ImportExcludeNumber[]> {
   const rows = await callAmfphpService<PhpRow[]>("DbManagerProperties", "load", [
     CATEGORY_KEY,
   ]);
   return rows.map(toApi);
 }
 
-export async function addImportIgnoreNumber(
+export async function addImportExcludeNumber(
   number: number,
   comment: string | null,
 ): Promise<void> {
@@ -60,7 +60,7 @@ export async function addImportIgnoreNumber(
   ]);
 }
 
-export async function removeImportIgnoreNumber(id: number): Promise<void> {
+export async function removeImportExcludeNumber(id: number): Promise<void> {
   await callAmfphpService("DbManagerProperties", "update", [
     CATEGORY_KEY,
     [{ updatemark: "UPDATE", id, category_key: CATEGORY_KEY, del_fg: true }],

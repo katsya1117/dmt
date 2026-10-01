@@ -73,7 +73,7 @@ class DBConnection
 
             // 複数機能が相乗りする汎用キー・バリュー設定テーブル。
             // 客先実物のDDLをSQLite向けに変換（COLLATE/ENGINE/COMMENT等のMySQL固有構文は落とす）。
-            // 詳細はdocs/AMFPHP連携_差分無視リスト.md参照
+            // 詳細はdocs/AMFPHP連携_差分除外リスト.md参照
             $this->dbh->exec("CREATE TABLE _properties (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 category_key TEXT NOT NULL,

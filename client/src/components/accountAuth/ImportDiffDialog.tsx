@@ -27,7 +27,7 @@ import { AUTH_CRITICAL_FIELDS } from "../../api/accountAuthImport";
 import type { AccountAuthInput } from "../../api/accountAuth";
 import { OverflowTooltipCell } from "../dataGrid/OverflowTooltipCell";
 import { accountAuthApi } from "../../store/services/accountAuthApi";
-import { ImportIgnoreNumbersDialog } from "./ImportIgnoreNumbersDialog";
+import { ImportExcludeNumbersDialog } from "./ImportExcludeNumbersDialog";
 
 type Props = {
   open: boolean;
@@ -101,8 +101,8 @@ export function ImportDiffDialog({
   onApply,
   applying,
 }: Props) {
-  const { data: ignoreNumbers = [] } = accountAuthApi.useImportIgnoreNumbersQuery();
-  const ignoreSet = useMemo(() => new Set(ignoreNumbers.map((e) => e.number)), [ignoreNumbers]);
+  const { data: excludeNumbers = [] } = accountAuthApi.useImportExcludeNumbersQuery();
+  const excludeSet = useMemo(() => new Set(excludeNumbers.map((e) => e.number)), [excludeNumbers]);
 
   const hasChanges =
     !!diff &&
@@ -208,10 +208,10 @@ export function ImportDiffDialog({
     : [];
 
   // 選択状態（適用可否の唯一の情報源）。diffが新しく来た時だけ初期化する。
-  // 無視リストにNoが含まれる行はデフォルトでOFF、それ以外はON。
-  // 【ignoreSetを依存配列に入れない】無視リストを開いたまま編集すると、
+  // 除外リストにNoが含まれる行はデフォルトでOFF、それ以外はON。
+  // 【excludeSetを依存配列に入れない】除外リストを開いたまま編集すると、
   // 既に手動でチェックを入れ直した内容が消えてしまうため、diffが変わった
-  // 時だけ初期化する（要件どおり、無視リストの変更が選択状態を上書きしない）
+  // 時だけ初期化する（要件どおり、除外リストの変更が選択状態を上書きしない）
   const [selectionModel, setSelectionModel] = useState<GridRowSelectionModel>({
     type: "include",
     ids: new Set(),
@@ -224,7 +224,7 @@ export function ImportDiffDialog({
     const ids = new Set(
       rows
         .filter(
-          (r) => r.record.number == null || !ignoreSet.has(r.record.number),
+          (r) => r.record.number == null || !excludeSet.has(r.record.number),
         )
         .map((r) => r.id),
     );
@@ -235,11 +235,11 @@ export function ImportDiffDialog({
   // マスクスイッチ：表示フィルタ専用。選択状態(selectionModel)には一切触れない
   // （「適用されるかどうか」はチェックボックスの状態だけが真実の情報源、という
   // 二重管理を避ける設計のため）
-  const [maskIgnored, setMaskIgnored] = useState(false);
-  const [ignoreListDialogOpen, setIgnoreListDialogOpen] = useState(false);
-  const visibleRows = maskIgnored
+  const [maskExcluded, setMaskExcluded] = useState(false);
+  const [excludeListDialogOpen, setExcludeListDialogOpen] = useState(false);
+  const visibleRows = maskExcluded
     ? rows.filter(
-        (r) => r.record.number == null || !ignoreSet.has(r.record.number),
+        (r) => r.record.number == null || !excludeSet.has(r.record.number),
       )
     : rows;
 
@@ -364,18 +364,18 @@ export function ImportDiffDialog({
             control={
               <Switch
                 size="small"
-                checked={maskIgnored}
-                onChange={(e) => setMaskIgnored(e.target.checked)}
+                checked={maskExcluded}
+                onChange={(e) => setMaskExcluded(e.target.checked)}
               />
             }
-            label="無視リストの行を隠す"
+            label="除外リストの行を隠す"
             sx={{ mr: 1 }}
           />
-          <Tooltip title="無視リスト管理">
+          <Tooltip title="除外リスト管理">
             <IconButton
               size="small"
-              aria-label="無視リスト管理"
-              onClick={() => setIgnoreListDialogOpen(true)}
+              aria-label="除外リスト管理"
+              onClick={() => setExcludeListDialogOpen(true)}
               sx={{
                 color: "text.secondary",
                 "&:hover": { bgcolor: "action.hover" },
@@ -413,9 +413,9 @@ export function ImportDiffDialog({
               if (errorLines.has(params.row.line)) return "import-error-row";
               if (
                 params.row.record.number != null &&
-                ignoreSet.has(params.row.record.number)
+                excludeSet.has(params.row.record.number)
               )
-                return "import-ignored-row";
+                return "import-excluded-row";
               return "";
             }}
             sx={{
@@ -423,7 +423,7 @@ export function ImportDiffDialog({
                 bgcolor: "error.light",
                 "&:hover": { bgcolor: "error.light" },
               },
-              "& .import-ignored-row": {
+              "& .import-excluded-row": {
                 opacity: 0.55,
               },
             }}
@@ -505,9 +505,9 @@ export function ImportDiffDialog({
         </Button>
       </DialogActions>
     </Dialog>
-    <ImportIgnoreNumbersDialog
-      open={ignoreListDialogOpen}
-      onClose={() => setIgnoreListDialogOpen(false)}
+    <ImportExcludeNumbersDialog
+      open={excludeListDialogOpen}
+      onClose={() => setExcludeListDialogOpen(false)}
     />
     </>
   );

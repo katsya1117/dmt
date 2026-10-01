@@ -21,12 +21,12 @@ type Props = {
 // 差分プレビューで「デフォルトで適用しない」アカウントNoを管理する小さな
 // ダイアログ。AccountAuthFormDialogほどの複雑さ（RHF/Zod）は不要なので、
 // シンプルなuseStateで実装する
-export function ImportIgnoreNumbersDialog({ open, onClose }: Props) {
+export function ImportExcludeNumbersDialog({ open, onClose }: Props) {
   const { data: rows = [], isFetching } =
-    accountAuthApi.useImportIgnoreNumbersQuery();
+    accountAuthApi.useImportExcludeNumbersQuery();
   const [add, { isLoading: adding }] =
-    accountAuthApi.useAddImportIgnoreNumberMutation();
-  const [remove] = accountAuthApi.useRemoveImportIgnoreNumberMutation();
+    accountAuthApi.useAddImportExcludeNumberMutation();
+  const [remove] = accountAuthApi.useRemoveImportExcludeNumberMutation();
 
   const [numberInput, setNumberInput] = useState("");
   const [commentInput, setCommentInput] = useState("");
@@ -54,7 +54,7 @@ export function ImportIgnoreNumbersDialog({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>差分無視Noリストの管理</DialogTitle>
+      <DialogTitle>差分除外Noリストの管理</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           ここに登録したNo.は、差分プレビューで検出はされますが、デフォルトで適用チェックが外れます（グレーアウト表示）。
