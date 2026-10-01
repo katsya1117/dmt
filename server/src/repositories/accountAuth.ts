@@ -12,13 +12,14 @@ import { hashPassword } from "../utils/hashPassword";
 //   新規追加・Excel取り込みは常に平文が渡ってくる前提で毎回ハッシュ化する。
 //   手動更新（updateAccountAuth）だけは「パスワードを変更する」チェックが
 //   OFFの場合に空文字が渡ってくる（クライアント側の規約）ため、ここで
-//   「空文字なら既存ハッシュを維持・非空なら新規ハッシュ化」を解決する。
+//   「空文字ならpasswordキー自体を送らない（＝既存ハッシュを維持）・
+//   非空なら新規ハッシュ化」を解決する。
 //
-// 【AMFPHP側にレコード単位の部分更新が無いことについて】
-// DbManagerTInetUserAuth.update()のUPDATE文は全カラムを無条件に上書きする
-// （SET句を可変にする仕組みが無い）。そのためExcelの削除/リストア（本来は
-// delfgとcommentだけを変えたい）も、他のカラムを消さないよう毎回「現在の
-// 全カラム値」を読み直してから丸ごと送り直す必要がある（applyAccountAuthImport参照）
+// 【部分更新について（2026-10-02）】DbManagerTInetUserAuth.update()は
+// 新アプリ専用の新規実装（旧FLEXアプリとは非共有）であり、渡された列だけを
+// 更新する本当の部分更新に対応している（詳細はモックPHPのコメント参照）。
+// そのため「delfgだけ変えたい」といった更新も、現在の全カラム値を読み直して
+// 送り直す必要はなく、変えたい列だけを送ればよい
 // ─────────────────────────────────────────────────────────────
 
 const TARGET_TABLE_ID = 0; // t_inet_user_auth（要確認：t_inet_user_auth_ds3ではないか）
@@ -92,14 +93,19 @@ function toApi(row: PhpRow): AccountAuth {
   };
 }
 
-// AMFPHP(DbManagerTInetUserAuth.update)へ渡す1レコード分（$info相当）
-type PhpInfo = SharedFields & {
+// AMFPHP(DbManagerTInetUserAuth.update)へ渡す1レコード分（$info相当）。
+// updatemark/id以外は本当の部分更新（渡した列だけが更新される）なので
+// すべてオプショナル。INSERT時はtoPhpInfo()で全列を埋めて使う
+type PhpInfo = Partial<
+  SharedFields & {
+    username: string;
+    password: string;
+    non_sync: boolean;
+    delfg: boolean;
+  }
+> & {
   updatemark: "INSERT" | "UPDATE" | "DELETE";
   id?: number;
-  username: string;
-  password: string;
-  non_sync: boolean;
-  delfg: boolean;
 };
 
 function toPhpInfo(
@@ -125,13 +131,6 @@ function toPhpInfo(
     store_name: input.store_name,
     delfg: input.delfg,
   };
-}
-
-// AccountAuth（読み取り型）をAccountAuthInput（書き込み型）に変換する。
-// 「今の値をそのまま送り直す」（delfg更新など部分更新の代替）ときに使う
-function toInput(row: AccountAuth): AccountAuthInput {
-  const { id: _id, reg_date: _reg, upd_date: _upd, ...rest } = row;
-  return rest;
 }
 
 // 論理削除(delfg=1)も含めた全件（削除済み行は「状態」列で区別して表示する）
@@ -175,20 +174,18 @@ export async function updateAccountAuth(
   id: number,
   input: AccountAuthInput,
 ): Promise<AccountAuth | null> {
-  const all = await listAllAccountAuth();
-  const current = all.find((r) => r.id === id);
-  if (!current) return null;
-
-  // 空文字＝「パスワードを変更する」チェックOFF（クライアント側の規約）→既存ハッシュを維持。
-  // 非空＝新しい平文が入力された→ハッシュ化して上書き（既存ハッシュを再ハッシュしない）
-  const password =
-    input.password.trim() === ""
-      ? current.password
-      : hashPassword(input.password);
+  // 部分更新なので事前に現在行を読む必要はない（idが存在しなければ単に
+  // 0件更新で終わり、下のlistAllAccountAuth().find()がnullを返す）
+  const info = toPhpInfo(input, "UPDATE", id);
+  // 空文字＝「パスワードを変更する」チェックOFF（クライアント側の規約）→
+  // passwordキー自体を送らない（部分更新なので既存ハッシュがそのまま維持される）。
+  // 非空＝新しい平文が入力された→ハッシュ化して送る（既存ハッシュを再ハッシュしない）
+  if (input.password.trim() === "") delete info.password;
+  else info.password = hashPassword(input.password);
 
   await callAmfphpService("DbManagerTInetUserAuth", "update", [
     TARGET_TABLE_ID,
-    [toPhpInfo({ ...input, password }, "UPDATE", id)],
+    [info],
   ]);
 
   const updated = await listAllAccountAuth();
@@ -196,8 +193,7 @@ export async function updateAccountAuth(
 }
 
 // 論理削除（delfg=1）。現状DELETE APIは未開放（コントローラ側コメント参照）で未使用だが、
-// 将来開放する時のために残す。AMFPHP側に部分更新が無いため、現在の全カラムを読み直してから
-// delfgだけ変えて丸ごと送り直す
+// 将来開放する時のために残す。部分更新なのでdelfgだけ送ればよい
 export async function deleteAccountAuth(
   id: number,
 ): Promise<{ deleted: number }> {
@@ -207,7 +203,7 @@ export async function deleteAccountAuth(
 
   await callAmfphpService("DbManagerTInetUserAuth", "update", [
     TARGET_TABLE_ID,
-    [toPhpInfo({ ...toInput(current), delfg: true }, "UPDATE", id)],
+    [{ updatemark: "UPDATE", id, delfg: true }],
   ]);
   return { deleted: 1 };
 }
@@ -249,15 +245,8 @@ export interface ApplyImportResult {
 export async function applyAccountAuthImport(
   params: ApplyImportParams,
 ): Promise<ApplyImportResult> {
-  // deleted/restoredはid+commentしか持たない（delfg以外のカラムは変えたくない）が、
-  // AMFPHP側は全カラム上書きのUPDATEしか無いため、現在の全カラムを読み直して埋める
-  const needsCurrent =
-    params.deleted.length > 0 ||
-    params.restored.length > 0 ||
-    params.changed.length > 0;
-  const currentById = new Map(
-    (needsCurrent ? await listAllAccountAuth() : []).map((r) => [r.id, r]),
-  );
+  // 部分更新なので、deleted/restoredは{id, delfg, comment}だけ、changedは
+  // password抜きの残り全列だけを送ればよい（現在行の事前読み込みは不要）
 
   const data: PhpInfo[] = [];
 
@@ -267,33 +256,18 @@ export async function applyAccountAuthImport(
     );
   }
   for (const c of params.changed) {
-    const current = currentById.get(c.id);
-    if (!current) throw new Error(`account_auth id=${c.id} が見つかりません`);
-    data.push(
-      toPhpInfo({ ...c.after, password: current.password }, "UPDATE", c.id),
-    );
+    // passwordは意図的に含めない（accountAuthDiff.tsのINPUT_FIELDSからも除外
+    // 済み。Excelの初期パスワードで現在のハッシュを上書きしないため、部分更新で
+    // キーごと省略し、既存の値をそのまま保持させる）
+    const info = toPhpInfo(c.after, "UPDATE", c.id);
+    delete info.password;
+    data.push(info);
   }
   for (const d of params.deleted) {
-    const current = currentById.get(d.id);
-    if (!current) throw new Error(`account_auth id=${d.id} が見つかりません`);
-    data.push(
-      toPhpInfo(
-        { ...toInput(current), delfg: true, comment: d.comment },
-        "UPDATE",
-        d.id,
-      ),
-    );
+    data.push({ updatemark: "UPDATE", id: d.id, delfg: true, comment: d.comment });
   }
   for (const r of params.restored) {
-    const current = currentById.get(r.id);
-    if (!current) throw new Error(`account_auth id=${r.id} が見つかりません`);
-    data.push(
-      toPhpInfo(
-        { ...toInput(current), delfg: false, comment: r.comment },
-        "UPDATE",
-        r.id,
-      ),
-    );
+    data.push({ updatemark: "UPDATE", id: r.id, delfg: false, comment: r.comment });
   }
 
   if (data.length > 0) {

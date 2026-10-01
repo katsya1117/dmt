@@ -67,6 +67,8 @@ update($arg): $arg[0] = [userid, key, target, data]
 
 **UPDATE時の部分更新について（2026-10-01方針転換）**: AMFPHPのインターフェース（JSON契約）自体は`DbManagerTInetUserAuth`を踏襲するが、CRUD処理の中身は新アプリ専用の新規実装であり、旧FLEXアプリとは共有しない（AMFPHPのインターフェースだけ流用し、処理は完全に別物）。そのため`DbManagerTInetUserAuth.update()`の「UPDATE文のSET句が全カラム固定」という制約（旧FLEXアプリ時代のレガシーコードに由来し、既存アプリへの影響を避けるため変更できない）を踏襲する理由が無く、`DbManagerProperties.update()`は渡された列だけを更新する設計にした。これにより`importIgnoreList.ts`の削除処理は、対象行を読み直さず`{id, del_fg: true}`だけ送ればよい。
 
-**今後の課題**: 同じ理由（新アプリ専用の新規実装であり、既存アプリとは非共有）は`account_auth`側（`DbManagerTInetUserAuth`相当）にも当てはまるはずで、`accountAuth.ts`の「現在の行を読み直してから全カラム送り直す」実装（削除/リストア処理、パスワード保持処理）も同様に部分更新化できる可能性がある。ただし影響範囲が大きいため、本機能とは別のコミット群として改めて対応する。
+**対応済み（2026-10-02）**: 同じ理由（新アプリ専用の新規実装であり、既存アプリとは非共有）が`account_auth`側（`DbManagerTInetUserAuth`）にも当てはまるため、`DbManagerTInetUserAuth.update()`のUPDATE分岐も`DbManagerProperties.php`と同じ方式の本当の部分更新に書き換えた。これに伴い`server/src/repositories/accountAuth.ts`の「現在の行を読み直してから全カラム送り直す」実装（`updateAccountAuth`のパスワード保持処理、`applyAccountAuthImport`の`changed`/`deleted`/`restored`処理）も簡略化し、不要になった`toInput()`は削除した。
+
+**作業中に判明した落とし穴**: mock/php-serverはDockerイメージのビルド時にPHPファイルをコピーする構成（`Dockerfile`の`COPY ./webService ...`）のため、ホスト側のファイルを編集しただけでは稼働中のコンテナに反映されない。`docker-compose up -d --build`で再ビルドし直すまで、古い「全カラム固定」のコードが動き続ける（検証時、再ビルドを忘れて実行し、他カラムがNULLで上書きされる事故を一度起こした→再ビルド後に解消・データ復旧して確認し直した）。モックPHPを修正した際は必ず再ビルドすること。
 
 客先の実際のサービスクラス・採番方式が判明したら、このドキュメントと`server/src/repositories/importIgnoreList.ts`・モックPHP（`DbManagerProperties.php`）を合わせて更新する。

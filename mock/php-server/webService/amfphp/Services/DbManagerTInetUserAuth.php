@@ -13,11 +13,13 @@ require_once __DIR__ . '/AuthSession.php';
 // これはExpress側（amfphpClient.ts・リポジトリ）の実装・型・エラーハンドリングを
 // このMac単体で確認するためのスタブであり、業務ロジックの正しさの保証はしない
 //
-// 【重要な制約】本物と同じく、この update() は「行の一部の列だけ書き換える」
-// ことができない。INSERT/UPDATEどちらも常に全カラムを送る前提のSQLになっている
-// （UPDATE文のSET句が固定で、可変にする仕組みが無い）。呼び出し側（Express）が
-// 「delfgだけ変えたい」場合でも、他の全カラムの現在値を読み直して一緒に送り直す
-// 必要がある（詳細はdocs/AMFPHP連携.md §5）
+// 【本物とここで挙動が分かれる点】本物（docs/legacy-amfphp/配下のOCR復元版、
+// 客先の旧FLEXアプリが今も使う実運用コード）はJSON契約（load/updateの引数・
+// 戻り値の形）だけ流用し、CRUD処理の中身は新アプリ専用の新規実装で旧アプリとは
+// 共有していない。そのため本物のUPDATE文が持つ「SET句が全カラム固定」という
+// 制約（2026-10-01以前はこのモックも同じ制約を再現していた）を踏襲する理由が無く、
+// update()のUPDATE分岐は本当の部分更新（$infoに含まれる列だけをSET句に組み込む）
+// にしている（DbManagerProperties.phpと同じ方式）
 
 // 【define() とは】PHPで定数を作る組み込み関数。define('名前', 値)と書くと、
 // classやfunctionの外で定義してもプログラム全体どこからでもその名前で値を
@@ -131,33 +133,26 @@ class DbManagerTInetUserAuth
                         )
                     );
                 } elseif ($updatemark === 'UPDATE') {
-                    // 【部分更新ができない点に注意】SET句が全カラム固定で書かれており、
-                    // 「delfgだけ変えたい」といった一部カラムだけの更新はできない。
-                    // 呼び出し側は毎回、変えたくない列も含めて全部の値を渡す必要がある
-                    // （Express側 accountAuth.ts の toInput/currentById はこれへの対処）
+                    // 【本当の部分更新】このモックはDbManagerTInetUserAuth専用の新規実装で
+                    // あり旧FLEXアプリと共有していないため、「全カラム上書き固定」の作法を
+                    // 踏襲する制約は無い（DbManagerProperties.phpと同じ理由・同じ方式）。
+                    // $infoに含まれる列だけをSET句に組み込む（updatemark/idは除く）。
+                    // bool系(non_sync/delfg)だけ 1/0 に変換する
+                    $boolColumns = array('non_sync', 'delfg');
+                    $updatableColumns = array('username', 'password', 'comment', 'number', 'submission_date', 'regist_date', 'company_cd', 'company_name', 'store_cd', 'store_name', 'company_store_cd', 'company_store_branch_num', 'non_sync', 'delfg');
+                    $setParts = array('upd_date = ?'); // upd_dateだけ常に更新。reg_date（作成日時）はUPDATEでは変えない
+                    $values = array($now);
+                    foreach ($updatableColumns as $col) {
+                        if (array_key_exists($col, $info)) {
+                            $setParts[] = "$col = ?";
+                            $values[] = in_array($col, $boolColumns) ? (!empty($info[$col]) ? 1 : 0) : $info[$col];
+                        }
+                    }
+                    $values[] = $info['id'];
+
                     $ret = $db->execute(
-                        "update $table set
-                            username=?, password=?, comment=?, number=?, submission_date=?, regist_date=?,
-                            company_cd=?, company_name=?, store_cd=?, store_name=?,
-                            company_store_cd=?, company_store_branch_num=?, non_sync=?, delfg=?, upd_date=?
-                            where id=?",
-                        array(
-                            $info['username'], $info['password'],
-                            isset($info['comment']) ? $info['comment'] : null,
-                            isset($info['number']) ? $info['number'] : null,
-                            isset($info['submission_date']) ? $info['submission_date'] : null,
-                            isset($info['regist_date']) ? $info['regist_date'] : null,
-                            isset($info['company_cd']) ? $info['company_cd'] : null,
-                            isset($info['company_name']) ? $info['company_name'] : null,
-                            isset($info['store_cd']) ? $info['store_cd'] : null,
-                            isset($info['store_name']) ? $info['store_name'] : null,
-                            isset($info['company_store_cd']) ? $info['company_store_cd'] : null,
-                            isset($info['company_store_branch_num']) ? $info['company_store_branch_num'] : null,
-                            !empty($info['non_sync']) ? 1 : 0,
-                            !empty($info['delfg']) ? 1 : 0,
-                            $now, // upd_dateだけ更新。reg_date（作成日時）はUPDATEでは変えない
-                            $info['id'], // where id=? に対応する最後の値
-                        )
+                        "update $table set " . implode(', ', $setParts) . " where id = ?",
+                        $values
                     );
                 } elseif ($updatemark === 'DELETE') {
                     // 物理削除。本物同様、論理削除(delfg=1)にしたい場合は
