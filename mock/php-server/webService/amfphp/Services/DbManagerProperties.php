@@ -71,24 +71,34 @@ class DbManagerProperties
                 $categoryKey = isset($info['category_key']) ? $info['category_key'] : null;
 
                 if ($updatemark === 'INSERT') {
-                    // category_idは業務的な意味を持たない連番。同時書き込みでの衝突を避けるため、
-                    // 仮値(0)でINSERTした直後に、採番されたidをそのままcategory_idへ書き戻す
-                    // （idはAUTO_INCREMENTでテーブル全体で一意なので、category_key内でも必ず一意になる）
+                    // category_idはcategory_key内の連番（2026-10-02、既存データの実際の
+                    // 運用パターンに合わせた。MAX(category_id)+1方式）。idの流用はやめた
+                    // （idはテーブル全体のAUTO_INCREMENTで、既存データのcategory_idとは
+                    // 値が噛み合わない＝既存の運用慣習と見た目が揃わないため）。
+                    // 【採番衝突について】MAX()+1方式は同時書き込みで衝突しうるが、この
+                    // テーブルはENGINE=MyISAMでトランザクション非対応な上、この機能の
+                    // 書き込み頻度は低い（運用担当者が無視リストを編集する程度）ため許容する
+                    $maxRows = $db->query(
+                        "select max(category_id) as max_id from _properties where category_key = ?",
+                        array($categoryKey)
+                    );
+                    $nextCategoryId = 1;
+                    if ($maxRows !== false && isset($maxRows[0]['max_id']) && $maxRows[0]['max_id'] !== null) {
+                        $nextCategoryId = intval($maxRows[0]['max_id']) + 1;
+                    }
+
                     $ret = $db->execute(
                         "insert into _properties
                             (category_key, category_id, value1_1, value1_2, update_date, valid_fg, del_fg)
-                            values (?, 0, ?, ?, ?, 1, 0)",
+                            values (?, ?, ?, ?, ?, 1, 0)",
                         array(
                             $categoryKey,
+                            $nextCategoryId,
                             isset($info['value1_1']) ? $info['value1_1'] : null,
                             isset($info['value1_2']) ? $info['value1_2'] : null,
                             $now,
                         )
                     );
-                    if ($ret) {
-                        $newId = $db->lastInsertIdIntVal();
-                        $ret = $db->execute("update _properties set category_id = ? where id = ?", array($newId, $newId));
-                    }
                 } elseif ($updatemark === 'UPDATE') {
                     // 【本当の部分更新】DbManagerTInetUserAuth.php等の旧FLEXアプリ向け
                     // レガシーコードと違い、これは新アプリ専用の新規実装で既存アプリと共有

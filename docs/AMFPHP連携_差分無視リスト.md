@@ -39,10 +39,10 @@ CREATE TABLE IF NOT EXISTS `_properties` (
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 ```
 
-`category_key`＋`category_id`の具体的な使われ方（他機能がどう使っているか）を示す資料・サンプルデータは無い（2026-10-01時点、客先に確認中）。**「他の機能の使い方に合わせる」のではなく、「自分たちの`category_key`の枠の中だけは自由に決めてよい」という前提**で、以下の自己完結した意味づけを採用する。
+2026-10-02、客先の実データを確認したところ、同じ`category_key`に対して`category_id`が複数に分岐しているレコードが多数存在し、（`category_key`, `category_id`)のUNIQUE制約の通り使われていることが分かった。ただし`category_id`の値はその行の`id`（AUTO_INCREMENT）とは一致しておらず、**`category_key`内で独立に振られる連番**（1,2,3...のような）であると見られる。他機能が具体的にどういう意図でこの連番を振っているか（単なる慣習か、何らかのツールがこの並びを前提にしているか）を示す資料は無いが、**既存データの見た目の運用パターンに合わせる**方針にした。
 
 - `category_key`: 固定文字列`'account_auth_import_ignore_number'`。他機能と衝突しないよう十分に具体的な名前にしている（要確認：実際に衝突していないか客先に確認が必要）
-- `category_id`: 業務的な意味を持たせない、自分たちで管理する連番。採番はDB側の`id`（AUTO_INCREMENT、テーブル全体でグローバルに一意）をそのまま流用する（INSERT直後に採番された`id`を`category_id`へ書き戻す）。理由：`MAX(category_id)+1`方式は同時書き込みで衝突しうるが、`id`はAUTO_INCREMENTが保証するため衝突しない
+- `category_id`: `category_key`内の連番（`MAX(category_id) WHERE category_key=...`の次の値）。業務的な意味は持たせない。**採番衝突について**：MyISAM（トランザクション非対応）上でのMAX()+1方式は同時書き込みで衝突しうるが、この機能の書き込み頻度は低い（運用担当者が無視リストを編集する程度）ため許容する。当初は衝突を避けるため`id`（AUTO_INCREMENT）をそのまま流用する案だったが、既存データの`category_id`が`id`と噛み合わず見た目の慣習から外れるため撤回した
 - `value1_1`（NOT NULL）: アカウントNo（text型のため文字列化して保存、読み出し時にNumber()へ変換）
 - `value1_2`: 無視する理由の任意コメント（NULL可）
 - `value1_3`〜`value1_5`: 未使用
@@ -59,7 +59,7 @@ load($arg): $arg[0] = [userid, key, target, categoryKey]
 
 update($arg): $arg[0] = [userid, key, target, data]
   data = [{ updatemark: "INSERT"|"UPDATE", id?, category_key, category_id?, value1_1?, value1_2?, valid_fg?, del_fg? }, ...]
-  INSERT: category_idは仮値で入れてINSERT→直後に採番されたidをcategory_idへ書き戻すUPDATEを続けて実行
+  INSERT: category_idはcategory_key内でMAX(category_id)+1を求めてから採番
   UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, category_key, del_fg:true}）。
     WHERE句はid=?に加えcategory_key=?も必須（他機能の行をidだけで誤って
     書き換えてしまう事故を防ぐため。_properties は複数機能の相乗りテーブル）
