@@ -10,6 +10,7 @@
     "dev:server": "yarn --cwd server dev"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "exceljs": "^4.4.0"
   }
 }
