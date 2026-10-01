@@ -31,12 +31,18 @@ import {
   removeImportExcludeNumber,
   type ImportExcludeNumber,
 } from '../../api/importExcludeList'
+import {
+  fetchImportValueNormalizeRules,
+  addImportValueNormalizeRule,
+  removeImportValueNormalizeRule,
+  type ImportValueNormalizeRule,
+} from '../../api/importValueNormalizeRules'
 import type { ApiError } from '../../api/error'
 
 export const accountAuthApi = createApi({
   reducerPath: 'accountAuthApi',
   baseQuery: fakeBaseQuery<ApiError>(),
-  tagTypes: ['AccountAuth', 'ImportExcludeNumbers'],
+  tagTypes: ['AccountAuth', 'ImportExcludeNumbers', 'ImportValueNormalizeRules'],
   endpoints: (builder) => ({
     // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
     accountAuthList: builder.query<AccountAuth[], void>({
@@ -130,6 +136,39 @@ export const accountAuthApi = createApi({
         }
       },
       invalidatesTags: ['ImportExcludeNumbers'],
+    }),
+
+    importValueNormalizeRules: builder.query<ImportValueNormalizeRule[], void>({
+      queryFn: async () => {
+        try {
+          return { data: await fetchImportValueNormalizeRules() }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      providesTags: ['ImportValueNormalizeRules'],
+    }),
+
+    addImportValueNormalizeRule: builder.mutation<void, { field: string; fromValue: string; toValue: string }>({
+      queryFn: async ({ field, fromValue, toValue }) => {
+        try {
+          return { data: await addImportValueNormalizeRule(field, fromValue, toValue) }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      invalidatesTags: ['ImportValueNormalizeRules'],
+    }),
+
+    removeImportValueNormalizeRule: builder.mutation<void, number>({
+      queryFn: async (id) => {
+        try {
+          return { data: await removeImportValueNormalizeRule(id) }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      invalidatesTags: ['ImportValueNormalizeRules'],
     }),
   }),
 })

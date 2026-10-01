@@ -24,8 +24,8 @@ interface ImportExcludeNumberErrorResponse {
 @Tags('アカウント認証')
 export class ImportExcludeNumbersController extends Controller {
   /** 一覧取得（del_fg=1の行は除く。repositories/importExcludeList.tsで絞り込み済み）。
-   *  メソッド名はlistにしない：tsoaはメソッド名からoperationIdを生成するため、
-   *  AccountAuthController.list()と衝突し生成される型定義が壊れる */
+   *  メソッド名はlist/add/removeにしない：tsoaはメソッド名からoperationIdを
+   *  生成するため、他コントローラの同名メソッドと衝突し生成される型定義が壊れる */
   @Get()
   public async listExcludeNumbers(): Promise<ImportExcludeNumber[]> {
     return listImportExcludeNumbers()
@@ -35,7 +35,7 @@ export class ImportExcludeNumbersController extends Controller {
   @Post()
   @SuccessResponse(201, 'Created')
   @Response<ImportExcludeNumberErrorResponse>(400, '検証エラー')
-  public async add(@Body() body: AddImportExcludeNumberBody): Promise<void | ImportExcludeNumberErrorResponse> {
+  public async addExcludeNumber(@Body() body: AddImportExcludeNumberBody): Promise<void | ImportExcludeNumberErrorResponse> {
     if (!Number.isInteger(body.number)) {
       this.setStatus(400)
       return { error: 'numberは整数で指定してください' }
@@ -46,7 +46,7 @@ export class ImportExcludeNumbersController extends Controller {
 
   /** 削除（論理削除。del_fg=1にする。物理削除ではない） */
   @Delete('{id}')
-  public async remove(@Path() id: number): Promise<void> {
+  public async removeExcludeNumber(@Path() id: number): Promise<void> {
     await removeImportExcludeNumber(id)
   }
 }

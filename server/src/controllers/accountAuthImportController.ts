@@ -5,8 +5,9 @@ import {
   assertAccountAuthListLooksValid,
   type ApplyImportResult,
 } from '../repositories/accountAuth'
-import { computeImportDiff, validateImportRecords, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
+import { computeImportDiff, validateImportRecords, applyValueNormalizeRules, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
 import { parseAccountAuthExcelBuffer } from '../services/parseAccountAuthExcel'
+import { listImportValueNormalizeRules } from '../repositories/importValueNormalizeRules'
 
 interface ImportErrorResponse {
   error: string
@@ -30,7 +31,9 @@ export class AccountAuthImportController extends Controller {
   @Post('preview')
   @Response<ImportErrorResponse>(503, '既存データの取得に失敗（差分計算が信用できないため中断）')
   public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff | ImportErrorResponse> {
-    const records = await parseAccountAuthExcelBuffer(file.buffer)
+    const rawRecords = await parseAccountAuthExcelBuffer(file.buffer)
+    const normalizeRules = await listImportValueNormalizeRules()
+    const records = applyValueNormalizeRules(rawRecords, normalizeRules)
     const current = await listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
     try {
       assertAccountAuthListLooksValid(current)
@@ -58,7 +61,9 @@ export class AccountAuthImportController extends Controller {
     @FormField() commentOverrides?: string,
     @FormField() applyLines?: string
   ): Promise<ApplyImportResult | ImportErrorResponse> {
-    const records = await parseAccountAuthExcelBuffer(file.buffer)
+    const rawRecords = await parseAccountAuthExcelBuffer(file.buffer)
+    const normalizeRules = await listImportValueNormalizeRules()
+    const records = applyValueNormalizeRules(rawRecords, normalizeRules)
     const errors = validateImportRecords(records)
     if (errors.length > 0) {
       this.setStatus(400)

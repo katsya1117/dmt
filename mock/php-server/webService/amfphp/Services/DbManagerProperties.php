@@ -89,13 +89,16 @@ class DbManagerProperties
 
                     $ret = $db->execute(
                         "insert into _properties
-                            (category_key, category_id, value1_1, value1_2, update_date, valid_fg, del_fg)
-                            values (?, ?, ?, ?, ?, 1, 0)",
+                            (category_key, category_id, value1_1, value1_2, value1_3, value1_4, value1_5, update_date, valid_fg, del_fg)
+                            values (?, ?, ?, ?, ?, ?, ?, ?, 1, 0)",
                         array(
                             $categoryKey,
                             $nextCategoryId,
                             isset($info['value1_1']) ? $info['value1_1'] : null,
                             isset($info['value1_2']) ? $info['value1_2'] : null,
+                            isset($info['value1_3']) ? $info['value1_3'] : null,
+                            isset($info['value1_4']) ? $info['value1_4'] : null,
+                            isset($info['value1_5']) ? $info['value1_5'] : null,
                             $now,
                         )
                     );

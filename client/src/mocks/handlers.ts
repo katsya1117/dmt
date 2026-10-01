@@ -2,11 +2,13 @@ import { http, HttpResponse, delay } from 'msw'
 import { mockKatashikiList, mockKatashikiFiles } from './data'
 import { accountAuthHandlers } from './accountAuthHandlers'
 import { importExcludeListHandlers } from './importExcludeListHandlers'
+import { importValueNormalizeRulesHandlers } from './importValueNormalizeRulesHandlers'
 import { masterHandlers } from './masterHandlers'
 
 export const handlers = [
   ...accountAuthHandlers,
   ...importExcludeListHandlers,
+  ...importValueNormalizeRulesHandlers,
   ...masterHandlers,
 
   http.get('/api/katashiki', async () => {

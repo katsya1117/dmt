@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/account-auth/import/normalize-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description 一覧取得（del_fg=1の行は除く） */
+        get: operations["ListNormalizeRules"];
+        put?: never;
+        /** @description 追加。fieldはNORMALIZABLE_FIELDS（文字列型の列のみ）に含まれないと拒否する */
+        post: operations["AddNormalizeRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/account-auth/import/normalize-rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description 削除（論理削除。del_fg=1にする。物理削除ではない） */
+        delete: operations["RemoveNormalizeRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/account-auth/import/exclude-numbers": {
         parameters: {
             query?: never;
@@ -13,13 +48,13 @@ export interface paths {
         };
         /**
          * @description 一覧取得（del_fg=1の行は除く。repositories/importExcludeList.tsで絞り込み済み）。
-         *     メソッド名はlistにしない：tsoaはメソッド名からoperationIdを生成するため、
-         *     AccountAuthController.list()と衝突し生成される型定義が壊れる
+         *     メソッド名はlist/add/removeにしない：tsoaはメソッド名からoperationIdを
+         *     生成するため、他コントローラの同名メソッドと衝突し生成される型定義が壊れる
          */
         get: operations["ListExcludeNumbers"];
         put?: never;
         /** @description 追加 */
-        post: operations["Add"];
+        post: operations["AddExcludeNumber"];
         delete?: never;
         options?: never;
         head?: never;
@@ -37,7 +72,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** @description 削除（論理削除。del_fg=1にする。物理削除ではない） */
-        delete: operations["Remove"];
+        delete: operations["RemoveExcludeNumber"];
         options?: never;
         head?: never;
         patch?: never;
@@ -145,6 +180,21 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ImportValueNormalizeRule: {
+            toValue: string;
+            fromValue: string;
+            field: string;
+            /** Format: double */
+            id: number;
+        };
+        ImportValueNormalizeRuleErrorResponse: {
+            error: string;
+        };
+        AddImportValueNormalizeRuleBody: {
+            field: string;
+            fromValue: string;
+            toValue: string;
+        };
         ImportExcludeNumber: {
             comment: string | null;
             /** Format: double */
@@ -261,6 +311,79 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ListNormalizeRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportValueNormalizeRule"][];
+                };
+            };
+        };
+    };
+    AddNormalizeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddImportValueNormalizeRuleBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown | components["schemas"]["ImportValueNormalizeRuleErrorResponse"];
+                };
+            };
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportValueNormalizeRuleErrorResponse"];
+                };
+            };
+        };
+    };
+    RemoveNormalizeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     ListExcludeNumbers: {
         parameters: {
             query?: never;
@@ -281,7 +404,7 @@ export interface operations {
             };
         };
     };
-    Add: {
+    AddExcludeNumber: {
         parameters: {
             query?: never;
             header?: never;
@@ -314,7 +437,7 @@ export interface operations {
             };
         };
     };
-    Remove: {
+    RemoveExcludeNumber: {
         parameters: {
             query?: never;
             header?: never;

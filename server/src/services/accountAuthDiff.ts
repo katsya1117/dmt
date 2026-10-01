@@ -78,7 +78,7 @@ const INPUT_FIELDS: (keyof AccountAuthInput)[] = [
 export const AUTH_CRITICAL_FIELDS = ["accountName", "delfg"];
 
 // 変更内容を表す項目名（運用担当者が普段手入力している備考の文言に合わせる）
-const FIELD_LABELS: Partial<Record<keyof AccountAuthInput, string>> = {
+export const FIELD_LABELS: Partial<Record<keyof AccountAuthInput, string>> = {
   accountName: "ユーザー名",
   number: "No.",
   submission_date: "申込日",
@@ -91,6 +91,58 @@ const FIELD_LABELS: Partial<Record<keyof AccountAuthInput, string>> = {
   store_cd: "販売店CD",
   store_name: "販売店名",
 };
+
+// 比較前値置換ルール（docs/Excel取り込み_比較前値置換ルール.md参照）の対象にできる列。
+// 文字列型の列のみに限定する（number/non_sync/delfgは型変換が要る上、表記ゆれの
+// 吸収というユースケースにも合わないため対象外。YAGNI）
+export const NORMALIZABLE_FIELDS: (keyof AccountAuthInput)[] = [
+  "accountName",
+  "submission_date",
+  "regist_date",
+  "company_cd",
+  "company_name",
+  "company_store_cd",
+  "company_store_branch_num",
+  "store_cd",
+  "store_name",
+];
+
+// fieldはAMFPHP(_properties)由来の生データで型保証が無いため、呼び出し側に
+// keyof AccountAuthInputでの検証を強制しない（この関数自身がNORMALIZABLE_FIELDS
+// で安全に絞り込む）
+export type ValueNormalizeRule = {
+  field: string;
+  fromValue: string;
+  toValue: string;
+};
+
+// Excelパース直後・差分計算の前に、ルールに一致する値を正規化する。
+// 【なぜ比較後ではなくここで置き換えるか】差分検出だけを抑制すると、after
+// オブジェクトに生のExcel値が残ったままになり、同じ行の別列が本当に変更されて
+// apply された時、意図せずDBの値を上書きしてしまう（docs/Excel取り込み_
+// 比較前値置換ルール.md参照）。ここで値自体を書き換えることで、検出・表示・
+// 実際の書き込みのすべてで一貫した値が使われる
+export function applyValueNormalizeRules(
+  records: AccountAuthInput[],
+  rules: ValueNormalizeRule[],
+): AccountAuthInput[] {
+  if (rules.length === 0) return records;
+  const applicableRules = rules.filter(
+    (r): r is ValueNormalizeRule & { field: keyof AccountAuthInput } =>
+      NORMALIZABLE_FIELDS.some((f) => f === r.field),
+  );
+  if (applicableRules.length === 0) return records;
+
+  return records.map((r) => {
+    let next = r;
+    for (const rule of applicableRules) {
+      if (next[rule.field] === rule.fromValue) {
+        next = { ...next, [rule.field]: rule.toValue };
+      }
+    }
+    return next;
+  });
+}
 
 function todayStr(): string {
   const d = new Date();
