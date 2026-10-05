@@ -101,10 +101,18 @@ class DbManagerTInetUserAuth
         $errorcode = 0;
         $errormsg = '';
 
+        // $dataはJSON配列[...]由来なので、json_decodeの第2引数（true/false）に
+        // 関わらず常にPHPの配列になる（ここは影響を受けない）。影響があるのは、
+        // 配列の中の1件（JSONオブジェクト{...}由来）である$infoの方。gateway.phpが
+        // json_decode(..., true)しているため$infoは連想配列になり、以降
+        // isset($info['...'])/array_key_exists/$info['...']でアクセスしている。
+        // 本番側がjson_decodeをtrue無しで呼び$infoがstdClassオブジェクトになる
+        // 場合は、$infoに対するこれらの配列アクセスだけを
+        // isset($info->...)/property_exists($info, ...)/$info->...に書き換える必要がある
         if (is_array($data)) {
             $now = date('Y-m-d H:i:s'); // このバッチ内の全レコードで同じ日時にする
             foreach ($data as $info) {
-                $updatemark = isset($info['updatemark']) ? $info['updatemark'] : null;
+                $updatemark = isset($info['updatemark']) ? $info['updatemark'] : null; // オブジェクトなら $info->updatemark
 
                 if ($updatemark === 'INSERT') {
                     // 本物と同じく、SQL文字列＋プレースホルダの値を$db->execute()に渡す形。
@@ -116,6 +124,7 @@ class DbManagerTInetUserAuth
                              company_store_cd, company_store_branch_num, non_sync, delfg, reg_date, upd_date)
                             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         array(
+                            // 【array前提】オブジェクトなら $info->username, $info->password（以下同様）
                             $info['username'], $info['password'],
                             isset($info['comment']) ? $info['comment'] : null,
                             isset($info['number']) ? $info['number'] : null,
@@ -143,12 +152,14 @@ class DbManagerTInetUserAuth
                     $setParts = array('upd_date = ?'); // upd_dateだけ常に更新。reg_date（作成日時）はUPDATEでは変えない
                     $values = array($now);
                     foreach ($updatableColumns as $col) {
+                        // 【array前提】オブジェクトなら array_key_exists($col, $info) → property_exists($info, $col)、
+                        // $info[$col] → $info->$col
                         if (array_key_exists($col, $info)) {
                             $setParts[] = "$col = ?";
                             $values[] = in_array($col, $boolColumns) ? (!empty($info[$col]) ? 1 : 0) : $info[$col];
                         }
                     }
-                    $values[] = $info['id'];
+                    $values[] = $info['id']; // 【array前提】オブジェクトなら $info->id
 
                     $ret = $db->execute(
                         "update $table set " . implode(', ', $setParts) . " where id = ?",
@@ -157,7 +168,7 @@ class DbManagerTInetUserAuth
                 } elseif ($updatemark === 'DELETE') {
                     // 物理削除。本物同様、論理削除(delfg=1)にしたい場合は
                     // updatemark: 'DELETE' ではなく 'UPDATE' + delfg:true を送る
-                    $ret = $db->execute("delete from $table where id=?", array($info['id']));
+                    $ret = $db->execute("delete from $table where id=?", array($info['id'])); // 【array前提】オブジェクトなら $info->id
                 } else {
                     // updatemarkが上記3つのいずれでもない場合は何もせず次のレコードへ進む
                     // （本物と同じく、想定外の値に対する明示的なエラー処理は無い）

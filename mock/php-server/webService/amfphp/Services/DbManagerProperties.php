@@ -64,11 +64,19 @@ class DbManagerProperties
         $errorcode = 0;
         $errormsg = '';
 
+        // $dataはJSON配列[...]由来なので、json_decodeの第2引数（true/false）に
+        // 関わらず常にPHPの配列になる（ここは影響を受けない）。影響があるのは、
+        // 配列の中の1件（JSONオブジェクト{...}由来）である$infoの方。gateway.phpが
+        // json_decode(..., true)しているため$infoは連想配列になり、以降
+        // isset($info['...'])/array_key_exists/$info['...']でアクセスしている。
+        // 本番側がjson_decodeをtrue無しで呼び$infoがstdClassオブジェクトになる
+        // 場合は、$infoに対するこれらの配列アクセスだけを
+        // isset($info->...)/property_exists($info, ...)/$info->...に書き換える必要がある
         if (is_array($data)) {
             $now = date('Y-m-d H:i:s');
             foreach ($data as $info) {
-                $updatemark = isset($info['updatemark']) ? $info['updatemark'] : null;
-                $categoryKey = isset($info['category_key']) ? $info['category_key'] : null;
+                $updatemark = isset($info['updatemark']) ? $info['updatemark'] : null; // オブジェクトなら isset($info->updatemark) ? $info->updatemark : null
+                $categoryKey = isset($info['category_key']) ? $info['category_key'] : null; // オブジェクトなら isset($info->category_key) ? $info->category_key : null
 
                 if ($updatemark === 'INSERT') {
                     // category_idはcategory_key内の連番（2026-10-02、既存データの実際の
@@ -94,6 +102,7 @@ class DbManagerProperties
                         array(
                             $categoryKey,
                             $nextCategoryId,
+                            // 【array前提】オブジェクトなら isset($info->value1_1) ? $info->value1_1 : null（以下同様）
                             isset($info['value1_1']) ? $info['value1_1'] : null,
                             isset($info['value1_2']) ? $info['value1_2'] : null,
                             isset($info['value1_3']) ? $info['value1_3'] : null,
@@ -112,12 +121,14 @@ class DbManagerProperties
                     $setParts = array('update_date = ?');
                     $values = array($now);
                     foreach ($updatableColumns as $col) {
+                        // 【array前提】オブジェクトなら array_key_exists($col, $info) → property_exists($info, $col)、
+                        // $info[$col] → $info->$col（変数名でプロパティ名を指定する書き方）
                         if (array_key_exists($col, $info)) {
                             $setParts[] = "$col = ?";
                             $values[] = is_bool($info[$col]) ? ($info[$col] ? 1 : 0) : $info[$col];
                         }
                     }
-                    $values[] = $info['id'];
+                    $values[] = $info['id']; // 【array前提】オブジェクトなら $info->id
                     // _properties は複数機能の相乗りテーブルのため、idだけでなく
                     // category_keyも一致する行だけを更新する（他機能の行を誤って
                     // 書き換えてしまう事故を防ぐ）。呼び出し側は必ずcategory_keyを渡すこと
