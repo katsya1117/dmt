@@ -6,7 +6,7 @@
       "request": "launch",
       "name": "Server (Express/tsx)",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["--watch", "--import", "tsx", "src/index.ts"],
+      "runtimeArgs": ["--watch", "--env-file-if-exists=.env", "--import", "tsx", "src/index.ts"],
       "cwd": "${workspaceFolder}/server",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
