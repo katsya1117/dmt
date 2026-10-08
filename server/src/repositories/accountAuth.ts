@@ -22,8 +22,6 @@ import { hashPassword } from "../utils/hashPassword";
 // 送り直す必要はなく、変えたい列だけを送ればよい
 // ─────────────────────────────────────────────────────────────
 
-const TARGET_TABLE_ID = 0; // t_inet_user_auth（要確認：t_inet_user_auth_ds3ではないか）
-
 // AccountAuth/AccountAuthInput/PhpRow/PhpInfoの4型で名前・型とも共通のフィールド
 // （id・accountName⇔username・non_sync・delfg・password以外の全部）をここに集約する
 type SharedFields = {
@@ -138,7 +136,7 @@ export async function listAllAccountAuth(): Promise<AccountAuth[]> {
   const rows = await callAmfphpService<PhpRow[]>(
     "DbManagerTInetUserAuth",
     "load",
-    [TARGET_TABLE_ID],
+    [],
   );
   return rows.map(toApi);
 }
@@ -163,10 +161,7 @@ export async function createAccountAuth(
   const data = records.map((r) =>
     toPhpInfo({ ...r, password: hashPassword(r.password) }, "INSERT"),
   );
-  await callAmfphpService("DbManagerTInetUserAuth", "update", [
-    TARGET_TABLE_ID,
-    data,
-  ]);
+  await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
   return { inserted: records.length };
 }
 
@@ -183,10 +178,8 @@ export async function updateAccountAuth(
   if (input.password.trim() === "") delete info.password;
   else info.password = hashPassword(input.password);
 
-  await callAmfphpService("DbManagerTInetUserAuth", "update", [
-    TARGET_TABLE_ID,
-    [info],
-  ]);
+  const data = [info];
+  await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
 
   const updated = await listAllAccountAuth();
   return updated.find((r) => r.id === id) ?? null;
@@ -201,10 +194,8 @@ export async function deleteAccountAuth(
   const current = all.find((r) => r.id === id && !r.delfg);
   if (!current) return { deleted: 0 };
 
-  await callAmfphpService("DbManagerTInetUserAuth", "update", [
-    TARGET_TABLE_ID,
-    [{ updatemark: "UPDATE", id, delfg: true }],
-  ]);
+  const data = [{ updatemark: "UPDATE", id, delfg: true }];
+  await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
   return { deleted: 1 };
 }
 
@@ -271,10 +262,7 @@ export async function applyAccountAuthImport(
   }
 
   if (data.length > 0) {
-    await callAmfphpService("DbManagerTInetUserAuth", "update", [
-      TARGET_TABLE_ID,
-      data,
-    ]);
+    await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
   }
 
   return {

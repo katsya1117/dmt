@@ -60,15 +60,15 @@
 
 1. **本物の`DbManagerTInetUserAuth.php`が実際に動く状態か**。`mysql_errno()`/`mysql_error()`（PHP7で廃止された関数呼び出し）やPHP4スタイルコンストラクタは、このリポジトリ内の控え（`docs/legacy-amfphp/`配下）では全ファイル横断で修正・再確認済み（2026-08-20、PHP8.3での構文チェック＋手動精査。PHP8.4のイメージはネットワーク制限で取得できず未検証）。ただし**客先に実際にデプロイされているコードが同じ状態とは限らない**。本番接続前に要確認
 2. **モックは簡略化した再現に過ぎない**。LPADのフォーマットや電子マニュアル権限の連動削除など、本物固有の業務ロジックまでは再現していないため、モックで通ったからといって本物でも同じ結果になる保証はない
-3. **本物のAMFPHP JSONプラグインが`parameters`を連想配列として渡してくる前提でよいか（要注意）**。`DbManagerTInetUserAuth.php`・`AuthSession.php`（客先実物のOCR復元版）はどちらも`$info["username"]`・`$arg[0][0]`のような配列アクセスを一貫して使っている。これは本物のJSONプラグインが`json_decode($json, true)`のように連想配列へデコードしていることが前提になっているコードで、もし本物が`stdClass`（`json_decode`の第2引数を省略した場合の既定の挙動）で渡してきていたら、配列アクセスの箇所で`Cannot use object of type stdClass as array`のような実行時エラーになる。このモック（`mock/php-server/webService/amfphp/gateway.php`）は`json_decode(..., true)`を明示しているため問題ないが、**本物が同じ実装とは限らない**。実物の`DbManagerTInetUserAuth.php`が現に配列アクセスで書かれ本番で動いている以上、本物も連想配列で渡している可能性が高いという状況証拠はあるが、確証ではない。本番接続時に最初に疑うべき箇所の1つ
-4. `TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか（§6）
+3. ~~本物のAMFPHP JSONプラグインが`parameters`を連想配列として渡してくる前提でよいか~~ → **解決済み（2026-10-09）**。客先の新しいPHP側はAMFPHPの通信インターフェースだけ流用し、CRUD処理自体は新規実装であることが確認できたため、`gateway.php`・`DbManagerTInetUserAuth.php`・`DbManagerProperties.php`を`json_decode()`（`true`無し＝stdClassオブジェクト）に統一した。本番側の実際の方式に合わせたので、もう「本物がどちらか分からない」という不確実性は無い
+4. ~~`TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか~~ → **解決済み（2026-10-09）**。`targetTableId`自体を撤廃した。新アプリは常に`t_inet_user_auth`1つだけを操作する前提で作っており、本物にあった`t_inet_user_auth_ds3`相当の2テーブル構成は新アプリでは不要（クラス内部に`$table = 't_inet_user_auth'`で固定）。複数テーブルに波及する操作が将来必要になれば、引数で選ぶのではなく専用メソッド名で表現する方針
 5. `userid`/`key`の実際の値・発行方法（§6）
 
-## 5. 既知の制約：AMFPHPには部分更新が無い
+## 5. 【解消済み】AMFPHPには部分更新が無い、という制約について
 
-`DbManagerTInetUserAuth.update()`のUPDATE文は、列を選んで更新する仕組みが無く**常に全カラムを上書き**する（SET句が固定）。そのため、Excel取り込みの削除/リストア（本来`delfg`と`comment`だけ変えたい操作）をそのまま送ると、他のカラムがnullで潰れる。
+~~`DbManagerTInetUserAuth.update()`のUPDATE文は、列を選んで更新する仕組みが無く常に全カラムを上書きする（SET句が固定）~~ → **2026-10-02に解消**。これは本物（旧FLEXアプリ）のUPDATE文の制約であり、新アプリのCRUD処理はAMFPHPの通信インターフェースだけ流用した新規実装のため、この制約を踏襲する理由が無いと判断し、`DbManagerTInetUserAuth.update()`・`DbManagerProperties.update()`とも**本当の部分更新**（渡された列だけをSET句に組み込む）に書き換えた。
 
-対処として、`applyAccountAuthImport`は削除/リストア対象行について**送信前に現在の全カラム値を読み直し（`listAllAccountAuth`）、変更したい列だけ上書きしてから丸ごと送り直す**（`accountAuth.ts`の`toInput`・`currentById`）。`verifyApplyImport.ts`で他カラムが消えないことを確認済み。
+これに伴い、`applyAccountAuthImport`が行っていた「送信前に現在の全カラム値を読み直し、変更したい列だけ上書きしてから丸ごと送り直す」という回避策（`toInput`・`currentById`）も不要になり削除した。削除/リストアは`{id, delfg, comment}`だけ、`changed`はpassword抜きの残りの列だけを送れば済む。詳細は`docs/AMFPHP連携_差分除外リスト.md`参照。
 
 ## 6. 既知の制約：`listAllAccountAuth()`が不完全な結果を返す可能性（本番で確認済み）
 

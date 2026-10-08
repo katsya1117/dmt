@@ -14,12 +14,16 @@ require_once __DIR__ . '/AuthSession.php';
 // このMac単体で確認するためのスタブであり、業務ロジックの正しさの保証はしない
 //
 // 【本物とここで挙動が分かれる点】本物（docs/legacy-amfphp/配下のOCR復元版、
-// 客先の旧FLEXアプリが今も使う実運用コード）はJSON契約（load/updateの引数・
-// 戻り値の形）だけ流用し、CRUD処理の中身は新アプリ専用の新規実装で旧アプリとは
-// 共有していない。そのため本物のUPDATE文が持つ「SET句が全カラム固定」という
-// 制約（2026-10-01以前はこのモックも同じ制約を再現していた）を踏襲する理由が無く、
-// update()のUPDATE分岐は本当の部分更新（$infoに含まれる列だけをSET句に組み込む）
-// にしている（DbManagerProperties.phpと同じ方式）
+// 客先の旧FLEXアプリが今も使う実運用コード）はAMFPHPの通信インターフェース
+// （{serviceName, methodName, parameters}というJSON-RPC的な形）だけ流用し、
+// CRUD処理の中身・引数の並びは新アプリ専用の新規実装で旧アプリとは共有していない。
+// そのため、以下の点は本物と異なる（2026-10-09方針確定）：
+// - update()のUPDATE分岐は本当の部分更新（$infoに含まれる列だけをSET句に組み込む）
+//   にしている（本物は「SET句が全カラム固定」。DbManagerProperties.phpと同じ方式）
+// - targetTableId（本物にある、t_inet_user_auth/t_inet_user_auth_ds3を選ぶ引数）は
+//   廃止した。このクラスは常にt_inet_user_authだけを操作する前提で作っており、
+//   新アプリにds3相当の2テーブル構成は不要なため。複数テーブルに波及する操作が
+//   将来必要になった場合は、引数で選ぶのではなく専用メソッド名で表現する方針
 
 // 【define() とは】PHPで定数を作る組み込み関数。define('名前', 値)と書くと、
 // classやfunctionの外で定義してもプログラム全体どこからでもその名前で値を
@@ -30,22 +34,10 @@ define('ERROR_LOGIN_STATE_MISSMATCH', 7); // ログイン確認に失敗した�
 
 class DbManagerTInetUserAuth
 {
-    // targetTableIdの0/1が、それぞれどのテーブルに対応するかの対応表。
-    // 本物のDbManagerTInetUserAuth.phpと同じ並び（0=t_inet_user_auth）
-    private $targetTables = array('t_inet_user_auth', 't_inet_user_auth_ds3');
+    // このクラスが操作するテーブルは常にこれ1つ（引数で選べない固定値）
+    private $table = 't_inet_user_auth';
 
-    // 位置3(targetTableId)から、実際に操作するテーブル名を決める。
-    // 範囲外の値が来たら null を返し、呼び出し元でエラー扱いにする
-    private function resolveTable($arg)
-    {
-        $targetTableId = isset($arg[0][3]) ? $arg[0][3] : null;
-        if ($targetTableId === null || $targetTableId < 0 || $targetTableId >= count($this->targetTables)) {
-            return null;
-        }
-        return $this->targetTables[$targetTableId];
-    }
-
-    // 一覧取得。$arg[0] = [userid, key, target, targetTableId]（データ部分は無い）
+    // 一覧取得。$arg[0] = [userid, key, target]（データ部分は無い）
     public function load($arg)
     {
         // 本物と同じく、位置0/1がuserid/key、AuthSession経由でログイン確認する
@@ -58,10 +50,7 @@ class DbManagerTInetUserAuth
             // （gateway.phpがこれをjson_encodeしてHTTPレスポンスにする）
             return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
         }
-        $table = $this->resolveTable($arg);
-        if ($table === null) {
-            return array('code' => RESULT_FAILURE, 'errormsg' => 'argument is invalid.');
-        }
+        $table = $this->table;
 
         // 位置2(target)をAuthSession::connectionDb()に渡し、接続済みDBConnectionを得る
         $target = isset($arg[0][2]) ? $arg[0][2] : 0;
@@ -77,7 +66,7 @@ class DbManagerTInetUserAuth
         return array('code' => RESULT_SUCCESS, 'output' => $rows);
     }
 
-    // 追加/更新/削除。$arg[0] = [userid, key, target, targetTableId, data]。
+    // 追加/更新/削除。$arg[0] = [userid, key, target, data]。
     // dataは1件ずつ {updatemark: "INSERT"|"UPDATE"|"DELETE", ...列の値} という
     // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・削除が混在）を処理できる
     public function update($arg)
@@ -89,11 +78,8 @@ class DbManagerTInetUserAuth
         if (!$login) {
             return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
         }
-        $table = $this->resolveTable($arg);
-        if ($table === null) {
-            return array('code' => RESULT_FAILURE, 'errormsg' => 'argument4 is invalid.');
-        }
-        $data = isset($arg[0][4]) ? $arg[0][4] : null; // 位置4 = 処理対象レコードの配列
+        $table = $this->table;
+        $data = isset($arg[0][3]) ? $arg[0][3] : null; // 位置3 = 処理対象レコードの配列
 
         $target = isset($arg[0][2]) ? $arg[0][2] : 0;
         $db = $auth->connectionDb($target);
@@ -104,15 +90,13 @@ class DbManagerTInetUserAuth
         // $dataはJSON配列[...]由来なので、json_decodeの第2引数（true/false）に
         // 関わらず常にPHPの配列になる（ここは影響を受けない）。影響があるのは、
         // 配列の中の1件（JSONオブジェクト{...}由来）である$infoの方。gateway.phpが
-        // json_decode(..., true)しているため$infoは連想配列になり、以降
-        // isset($info['...'])/array_key_exists/$info['...']でアクセスしている。
-        // 本番側がjson_decodeをtrue無しで呼び$infoがstdClassオブジェクトになる
-        // 場合は、$infoに対するこれらの配列アクセスだけを
-        // isset($info->...)/property_exists($info, ...)/$info->...に書き換える必要がある
+        // json_decode()をtrue無しで呼んでいるため、$infoはstdClassオブジェクトに
+        // なり、以降isset($info->...)/property_exists($info, ...)/$info->...で
+        // アクセスする（本番側の方式に統一。2026-10-09）
         if (is_array($data)) {
             $now = date('Y-m-d H:i:s'); // このバッチ内の全レコードで同じ日時にする
             foreach ($data as $info) {
-                $updatemark = isset($info['updatemark']) ? $info['updatemark'] : null; // オブジェクトなら $info->updatemark
+                $updatemark = isset($info->updatemark) ? $info->updatemark : null;
 
                 if ($updatemark === 'INSERT') {
                     // 本物と同じく、SQL文字列＋プレースホルダの値を$db->execute()に渡す形。
@@ -124,20 +108,19 @@ class DbManagerTInetUserAuth
                              company_store_cd, company_store_branch_num, non_sync, delfg, reg_date, upd_date)
                             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         array(
-                            // 【array前提】オブジェクトなら $info->username, $info->password（以下同様）
-                            $info['username'], $info['password'],
-                            isset($info['comment']) ? $info['comment'] : null,
-                            isset($info['number']) ? $info['number'] : null,
-                            isset($info['submission_date']) ? $info['submission_date'] : null,
-                            isset($info['regist_date']) ? $info['regist_date'] : null,
-                            isset($info['company_cd']) ? $info['company_cd'] : null,
-                            isset($info['company_name']) ? $info['company_name'] : null,
-                            isset($info['store_cd']) ? $info['store_cd'] : null,
-                            isset($info['store_name']) ? $info['store_name'] : null,
-                            isset($info['company_store_cd']) ? $info['company_store_cd'] : null,
-                            isset($info['company_store_branch_num']) ? $info['company_store_branch_num'] : null,
-                            !empty($info['non_sync']) ? 1 : 0,
-                            !empty($info['delfg']) ? 1 : 0,
+                            $info->username, $info->password,
+                            isset($info->comment) ? $info->comment : null,
+                            isset($info->number) ? $info->number : null,
+                            isset($info->submission_date) ? $info->submission_date : null,
+                            isset($info->regist_date) ? $info->regist_date : null,
+                            isset($info->company_cd) ? $info->company_cd : null,
+                            isset($info->company_name) ? $info->company_name : null,
+                            isset($info->store_cd) ? $info->store_cd : null,
+                            isset($info->store_name) ? $info->store_name : null,
+                            isset($info->company_store_cd) ? $info->company_store_cd : null,
+                            isset($info->company_store_branch_num) ? $info->company_store_branch_num : null,
+                            !empty($info->non_sync) ? 1 : 0,
+                            !empty($info->delfg) ? 1 : 0,
                             $now, $now, // reg_date, upd_date とも新規作成時刻
                         )
                     );
@@ -152,14 +135,13 @@ class DbManagerTInetUserAuth
                     $setParts = array('upd_date = ?'); // upd_dateだけ常に更新。reg_date（作成日時）はUPDATEでは変えない
                     $values = array($now);
                     foreach ($updatableColumns as $col) {
-                        // 【array前提】オブジェクトなら array_key_exists($col, $info) → property_exists($info, $col)、
-                        // $info[$col] → $info->$col
-                        if (array_key_exists($col, $info)) {
+                        // $info->$col は「変数$colの値をプロパティ名として使う」書き方
+                        if (property_exists($info, $col)) {
                             $setParts[] = "$col = ?";
-                            $values[] = in_array($col, $boolColumns) ? (!empty($info[$col]) ? 1 : 0) : $info[$col];
+                            $values[] = in_array($col, $boolColumns) ? (!empty($info->$col) ? 1 : 0) : $info->$col;
                         }
                     }
-                    $values[] = $info['id']; // 【array前提】オブジェクトなら $info->id
+                    $values[] = $info->id;
 
                     $ret = $db->execute(
                         "update $table set " . implode(', ', $setParts) . " where id = ?",
@@ -168,7 +150,7 @@ class DbManagerTInetUserAuth
                 } elseif ($updatemark === 'DELETE') {
                     // 物理削除。本物同様、論理削除(delfg=1)にしたい場合は
                     // updatemark: 'DELETE' ではなく 'UPDATE' + delfg:true を送る
-                    $ret = $db->execute("delete from $table where id=?", array($info['id'])); // 【array前提】オブジェクトなら $info->id
+                    $ret = $db->execute("delete from $table where id=?", array($info->id));
                 } else {
                     // updatemarkが上記3つのいずれでもない場合は何もせず次のレコードへ進む
                     // （本物と同じく、想定外の値に対する明示的なエラー処理は無い）

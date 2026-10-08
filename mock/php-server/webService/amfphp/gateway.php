@@ -23,15 +23,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 第2引数trueにより、JSONオブジェクト{serviceName,...}はPHPの連想配列になる
-// （$bodyに対する配列アクセスはこの設定とセット）。本番側がtrue無しでjson_decode
-// する場合は、$bodyがstdClassオブジェクトになるため、is_array($body)→is_object($body)、
-// isset($body['x'])→isset($body->x)、$body['x']→$body->xに書き換える必要がある
-// （詳細はServices/DbManagerProperties.php・DbManagerTInetUserAuth.phpの同種コメント参照）
-$body = json_decode(file_get_contents('php://input'), true);
-$serviceName = is_array($body) && isset($body['serviceName']) ? $body['serviceName'] : '';
-$methodName = is_array($body) && isset($body['methodName']) ? $body['methodName'] : '';
-$parameters = is_array($body) && isset($body['parameters']) ? $body['parameters'] : [];
+// 第2引数を付けない（デフォルトfalse）ため、JSONオブジェクト{serviceName,...}は
+// PHPのstdClassオブジェクトになる（本番側の方式に統一。2026-10-09）。
+// $parameters自体はJSON配列由来なので、この設定に関わらず常にPHPの配列になる
+// （オブジェクト/配列の違いはJSONオブジェクト{}にのみ関係し、JSON配列[]には関係しない）
+$body = json_decode(file_get_contents('php://input'));
+$serviceName = is_object($body) && isset($body->serviceName) ? $body->serviceName : '';
+$methodName = is_object($body) && isset($body->methodName) ? $body->methodName : '';
+$parameters = is_object($body) && isset($body->parameters) ? $body->parameters : [];
 
 // サービス名からファイルパスを組み立てる前にホワイトリスト形式で検証する
 // （ディレクトリトラバーサル・任意ファイルインクルード対策）
