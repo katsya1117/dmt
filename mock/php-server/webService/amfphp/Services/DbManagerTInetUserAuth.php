@@ -40,9 +40,14 @@ class DbManagerTInetUserAuth
     // 一覧取得。$arg[0] = [userid, key, target]（データ部分は無い）
     public function load($arg)
     {
+        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
+        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
+        $params = isset($arg[0]) ? $arg[0] : array();
+        $userid = isset($params[0]) ? $params[0] : null;
+        $key = isset($params[1]) ? $params[1] : null;
+        $target = isset($params[2]) ? $params[2] : 0;
+
         // 本物と同じく、位置0/1がuserid/key、AuthSession経由でログイン確認する
-        $userid = isset($arg[0][0]) ? $arg[0][0] : null;
-        $key = isset($arg[0][1]) ? $arg[0][1] : null;
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {
@@ -52,16 +57,19 @@ class DbManagerTInetUserAuth
         }
         $table = $this->table;
 
-        // 位置2(target)をAuthSession::connectionDb()に渡し、接続済みDBConnectionを得る
-        $target = isset($arg[0][2]) ? $arg[0][2] : 0;
+        // target(位置2)をAuthSession::connectionDb()に渡し、接続済みDBConnectionを得る
         $db = $auth->connectionDb($target);
         // 本物と同じく、DBConnection::query()にSQLを渡すだけ（値の埋め込みが無いので
         // $valuesは省略）。PDO::FETCH_ASSOC相当（カラム名をキーにした連想配列の配列）で返る
         $rows = $db->query("select * from $table order by id");
         $db->close();
 
-        if ($rows === false) {
-            return array('code' => RESULT_FAILURE, 'errormsg' => $db->errMsg);
+        // DBConnection::query()はDB未接続時にnullを返す（falseとは別の失敗値）。
+        // ===falseだけだとこのケースを見逃し、output:nullのまま「成功」を返してしまう
+        // （Express側がnullに対して配列操作をして初めてクラッシュする、分かりにくい
+        // 壊れ方になる。2026-10-09修正）
+        if ($rows === false || $rows === null) {
+            return array('code' => RESULT_FAILURE, 'errormsg' => $db->errMsg ?: 'DB接続に失敗しました');
         }
         return array('code' => RESULT_SUCCESS, 'output' => $rows);
     }
@@ -72,17 +80,21 @@ class DbManagerTInetUserAuth
     // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・論理削除が混在）を処理できる
     public function update($arg)
     {
-        $userid = isset($arg[0][0]) ? $arg[0][0] : null;
-        $key = isset($arg[0][1]) ? $arg[0][1] : null;
+        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
+        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
+        $params = isset($arg[0]) ? $arg[0] : array();
+        $userid = isset($params[0]) ? $params[0] : null;
+        $key = isset($params[1]) ? $params[1] : null;
+        $target = isset($params[2]) ? $params[2] : 0;
+        $data = isset($params[3]) ? $params[3] : null; // 位置3 = 処理対象レコードの配列
+
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {
             return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
         }
         $table = $this->table;
-        $data = isset($arg[0][3]) ? $arg[0][3] : null; // 位置3 = 処理対象レコードの配列
 
-        $target = isset($arg[0][2]) ? $arg[0][2] : 0;
         $db = $auth->connectionDb($target);
         $result = RESULT_SUCCESS;
         $errorcode = 0;

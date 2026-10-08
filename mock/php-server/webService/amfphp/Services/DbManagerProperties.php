@@ -18,19 +18,23 @@ class DbManagerProperties
     // 一覧取得。$arg[0] = [userid, key, target, categoryKey]
     public function load($arg)
     {
-        $userid = isset($arg[0][0]) ? $arg[0][0] : null;
-        $key = isset($arg[0][1]) ? $arg[0][1] : null;
+        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
+        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
+        $params = isset($arg[0]) ? $arg[0] : array();
+        $userid = isset($params[0]) ? $params[0] : null;
+        $key = isset($params[1]) ? $params[1] : null;
+        $target = isset($params[2]) ? $params[2] : 0;
+        $categoryKey = isset($params[3]) ? $params[3] : null;
+
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {
             return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
         }
-        $categoryKey = isset($arg[0][3]) ? $arg[0][3] : null;
         if ($categoryKey === null || $categoryKey === '') {
             return array('code' => RESULT_FAILURE, 'errormsg' => 'categoryKey is required.');
         }
 
-        $target = isset($arg[0][2]) ? $arg[0][2] : 0;
         $db = $auth->connectionDb($target);
         // del_fg=0の行のみ、自分のcategory_keyの範囲だけを返す（他機能の行は触らない）
         $rows = $db->query(
@@ -39,8 +43,11 @@ class DbManagerProperties
         );
         $db->close();
 
-        if ($rows === false) {
-            return array('code' => RESULT_FAILURE, 'errormsg' => $db->errMsg);
+        // DBConnection::query()はDB未接続時にnullを返す（falseとは別の失敗値）。
+        // ===falseだけだとこのケースを見逃し、output:nullのまま「成功」を返してしまう
+        // （DbManagerTInetUserAuth.phpと同じ修正。2026-10-09）
+        if ($rows === false || $rows === null) {
+            return array('code' => RESULT_FAILURE, 'errormsg' => $db->errMsg ?: 'DB接続に失敗しました');
         }
         return array('code' => RESULT_SUCCESS, 'output' => $rows);
     }
@@ -49,16 +56,20 @@ class DbManagerProperties
     // dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という連想配列の配列
     public function update($arg)
     {
-        $userid = isset($arg[0][0]) ? $arg[0][0] : null;
-        $key = isset($arg[0][1]) ? $arg[0][1] : null;
+        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
+        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
+        $params = isset($arg[0]) ? $arg[0] : array();
+        $userid = isset($params[0]) ? $params[0] : null;
+        $key = isset($params[1]) ? $params[1] : null;
+        $target = isset($params[2]) ? $params[2] : 0;
+        $data = isset($params[4]) ? $params[4] : null;
+
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {
             return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
         }
-        $data = isset($arg[0][4]) ? $arg[0][4] : null;
 
-        $target = isset($arg[0][2]) ? $arg[0][2] : 0;
         $db = $auth->connectionDb($target);
         $result = RESULT_SUCCESS;
         $errorcode = 0;
