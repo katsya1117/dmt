@@ -102,7 +102,7 @@ type PhpInfo = Partial<
     delfg: boolean;
   }
 > & {
-  updatemark: "INSERT" | "UPDATE" | "DELETE";
+  updatemark: "INSERT" | "UPDATE"; // 物理DELETEはサポートしない（論理削除はUPDATE+delfg:trueで表現）
   id?: number;
 };
 

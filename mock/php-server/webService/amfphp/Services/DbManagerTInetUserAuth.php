@@ -66,9 +66,10 @@ class DbManagerTInetUserAuth
         return array('code' => RESULT_SUCCESS, 'output' => $rows);
     }
 
-    // 追加/更新/削除。$arg[0] = [userid, key, target, data]。
-    // dataは1件ずつ {updatemark: "INSERT"|"UPDATE"|"DELETE", ...列の値} という
-    // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・削除が混在）を処理できる
+    // 追加/更新（論理削除も'UPDATE'+delfg:trueで表現する。物理DELETEは
+    // 意図的にサポートしない）。$arg[0] = [userid, key, target, data]。
+    // dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という
+    // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・論理削除が混在）を処理できる
     public function update($arg)
     {
         $userid = isset($arg[0][0]) ? $arg[0][0] : null;
@@ -147,13 +148,10 @@ class DbManagerTInetUserAuth
                         "update $table set " . implode(', ', $setParts) . " where id = ?",
                         $values
                     );
-                } elseif ($updatemark === 'DELETE') {
-                    // 物理削除。本物同様、論理削除(delfg=1)にしたい場合は
-                    // updatemark: 'DELETE' ではなく 'UPDATE' + delfg:true を送る
-                    $ret = $db->execute("delete from $table where id=?", array($info->id));
                 } else {
-                    // updatemarkが上記3つのいずれでもない場合は何もせず次のレコードへ進む
-                    // （本物と同じく、想定外の値に対する明示的なエラー処理は無い）
+                    // 物理DELETEは意図的にサポートしない（DbManagerProperties.phpと同じ方針。
+                    // account_authは客先DBで物理削除が不調のため、論理削除(delfg=1)のみ扱う。
+                    // updatemarkがINSERT/UPDATE以外の場合は何もせず次のレコードへ進む）
                     continue;
                 }
 
