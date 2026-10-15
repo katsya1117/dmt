@@ -64,6 +64,18 @@
 4. ~~`TARGET_TABLE_ID = 0`（`t_inet_user_auth`固定）で正しいか~~ → **解決済み（2026-10-09）**。`targetTableId`自体を撤廃した。新アプリは常に`t_inet_user_auth`1つだけを操作する前提で作っており、本物にあった`t_inet_user_auth_ds3`相当の2テーブル構成は新アプリでは不要（クラス内部に`$table = 't_inet_user_auth'`で固定）。複数テーブルに波及する操作が将来必要になれば、引数で選ぶのではなく専用メソッド名で表現する方針
 5. `userid`/`key`の実際の値・発行方法（§6）
 
+## 4.5. 【変更済み】parametersの受け取り方（2次元配列→引数分割）
+
+当初は`amfphpClient.ts`が`parameters = [[userid, key, target, ...args]]`という2次元配列を組み立て、`gateway.php`が`call_user_func`で`parameters`全体を1つの引数として渡し、各サービスメソッドは`$arg[0][0]`=userid, `$arg[0][1]`=key... という2次元アクセスで読んでいた。
+
+2026-10-16、`$arg[0][N]`という読み方が分かりづらいという指摘を受け、以下に変更した：
+
+- `amfphpClient.ts`：`parameters = [userid, key, target, ...args]`（1次元の配列）に変更
+- `gateway.php`：`call_user_func`→`call_user_func_array`に変更（配列の各要素を個別の引数として展開して渡す）
+- 各サービスクラス：`function load($arg)`から`function load($userid = null, $key = null, $target = 0)`のように、引数を直接分割して受け取る形に変更
+
+**全引数にデフォルト値を付けている**のが要点。`call_user_func_array`に渡る配列が想定より短い場合でも、デフォルト値のおかげで`ArgumentCountError`（未捕捉だと500でクラッシュ）にならず、従来の`isset($arg[0][N]) ? ... : デフォルト値`と同じ安全性を保っている。これはこのアプリ専用の新規実装の契約であり、本物のAMFPHPとは異なる（本物は`docs/legacy-amfphp/`の通り`$arg[0][N]`形式）。
+
 ## 5. 【解消済み】AMFPHPには部分更新が無い、という制約について
 
 ~~`DbManagerTInetUserAuth.update()`のUPDATE文は、列を選んで更新する仕組みが無く常に全カラムを上書きする（SET句が固定）~~ → **2026-10-02に解消**。これは本物（旧FLEXアプリ）のUPDATE文の制約であり、新アプリのCRUD処理はAMFPHPの通信インターフェースだけ流用した新規実装のため、この制約を踏襲する理由が無いと判断し、`DbManagerTInetUserAuth.update()`・`DbManagerProperties.update()`とも**本当の部分更新**（渡された列だけをSET句に組み込む）に書き換えた。

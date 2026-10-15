@@ -15,17 +15,13 @@ define('ERROR_LOGIN_STATE_MISSMATCH', 7);
 
 class DbManagerProperties
 {
-    // 一覧取得。$arg[0] = [userid, key, target, categoryKey]
-    public function load($arg)
+    // 一覧取得。gateway.phpがcall_user_func_arrayで引数を展開して渡すため、
+    // (userid, key, target, categoryKey)を直接引数として受け取る。
+    // 全引数にデフォルト値を付けているのは、想定より少ない引数しか来なかった
+    // 場合でもArgumentCountErrorで落ちず、従来のisset(...)?:...と同じ安全性を
+    // 保つため（2026-10-16方針変更。詳細はdocs/AMFPHP連携.md参照）
+    public function load($userid = null, $key = null, $target = 0, $categoryKey = null)
     {
-        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
-        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
-        $params = isset($arg[0]) ? $arg[0] : array();
-        $userid = isset($params[0]) ? $params[0] : null;
-        $key = isset($params[1]) ? $params[1] : null;
-        $target = isset($params[2]) ? $params[2] : 0;
-        $categoryKey = isset($params[3]) ? $params[3] : null;
-
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {
@@ -52,18 +48,12 @@ class DbManagerProperties
         return array('code' => RESULT_SUCCESS, 'output' => $rows);
     }
 
-    // 追加/更新。$arg[0] = [userid, key, target, categoryKey, data]。
+    // 追加/更新。(userid, key, target, categoryKey, data)を直接引数として
+    // 受け取る（categoryKeyはload()と位置を揃えるために残しているが、更新処理
+    // 自体は各レコード($info)が持つcategory_keyを使うため、この引数自体は未使用）。
     // dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という連想配列の配列
-    public function update($arg)
+    public function update($userid = null, $key = null, $target = 0, $categoryKey = null, $data = null)
     {
-        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
-        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
-        $params = isset($arg[0]) ? $arg[0] : array();
-        $userid = isset($params[0]) ? $params[0] : null;
-        $key = isset($params[1]) ? $params[1] : null;
-        $target = isset($params[2]) ? $params[2] : 0;
-        $data = isset($params[4]) ? $params[4] : null;
-
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {

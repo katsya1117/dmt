@@ -37,16 +37,13 @@ class DbManagerTInetUserAuth
     // このクラスが操作するテーブルは常にこれ1つ（引数で選べない固定値）
     private $table = 't_inet_user_auth';
 
-    // 一覧取得。$arg[0] = [userid, key, target]（データ部分は無い）
-    public function load($arg)
+    // 一覧取得。gateway.phpがcall_user_func_arrayで引数を展開して渡すため、
+    // (userid, key, target)を直接引数として受け取る（データ部分は無い）。
+    // 全引数にデフォルト値を付けているのは、想定より少ない引数しか来なかった
+    // 場合でもArgumentCountErrorで落ちず、従来のisset(...)?:...と同じ安全性を
+    // 保つため（2026-10-16方針変更。詳細はdocs/AMFPHP連携.md参照）
+    public function load($userid = null, $key = null, $target = 0)
     {
-        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
-        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
-        $params = isset($arg[0]) ? $arg[0] : array();
-        $userid = isset($params[0]) ? $params[0] : null;
-        $key = isset($params[1]) ? $params[1] : null;
-        $target = isset($params[2]) ? $params[2] : 0;
-
         // 本物と同じく、位置0/1がuserid/key、AuthSession経由でログイン確認する
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
@@ -75,19 +72,11 @@ class DbManagerTInetUserAuth
     }
 
     // 追加/更新（論理削除も'UPDATE'+delfg:trueで表現する。物理DELETEは
-    // 意図的にサポートしない）。$arg[0] = [userid, key, target, data]。
-    // dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という
+    // 意図的にサポートしない）。(userid, key, target, data)を直接引数として
+    // 受け取る。dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という
     // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・論理削除が混在）を処理できる
-    public function update($arg)
+    public function update($userid = null, $key = null, $target = 0, $data = null)
     {
-        // $arg[0][N]という2次元アクセスを繰り返すと分かりづらいので、
-        // 最初に$paramsへ展開してから、以降は1次元の$params[N]で読む
-        $params = isset($arg[0]) ? $arg[0] : array();
-        $userid = isset($params[0]) ? $params[0] : null;
-        $key = isset($params[1]) ? $params[1] : null;
-        $target = isset($params[2]) ? $params[2] : 0;
-        $data = isset($params[3]) ? $params[3] : null; // 位置3 = 処理対象レコードの配列
-
         $auth = new AuthSession();
         $login = $auth->checkLogin($userid, $key);
         if (!$login) {

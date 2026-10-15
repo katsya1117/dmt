@@ -5,9 +5,11 @@ import { config } from '../config'
 //
 // 【この層に閉じ込めているもの】
 // - リクエスト形（{serviceName, methodName, parameters}。parametersは
-//   docs/legacy-amfphp/webService/DbManagerTInetUserAuth.php が読む
-//   $arg[0][0]=userid, [1]=key, [2]=target, [3]=targetTableId, [4]=... という
-//   位置引数の並び）
+//   gateway.phpがcall_user_func_arrayで各サービスメソッドに位置引数として
+//   展開する（parameters[0]=userid, [1]=key, [2]=target, [3]以降=args）。
+//   新アプリ専用の新規実装のためこの並びは本物のAMFPHPとは異なる
+//   （2026-10-16、$arg[0][N]という2次元受け取りから、メソッド引数を
+//   直接分割して受け取る形に変更。詳細はdocs/AMFPHP連携.md参照）
 // - レスポンス形（$resultValue の code/errorcode/errormsg/output という
 //   エンベロープ。code===0が成功、それ以外は例外化する）
 //
@@ -43,11 +45,11 @@ export class AmfphpError extends Error {
   }
 }
 
-// DbManagerXxx系サービスは全メソッドが $arg[0] = [userid, key, target, ...args] という
-// 位置引数を受け取る規約（docs/legacy-amfphp/webService/DbManagerTInetUserAuth.php参照）。
-// args にはこの3つに続く残りの引数（例: targetTableId, data）を渡す
+// DbManagerXxx系サービスは全メソッドが (userid, key, target, ...args) という
+// 位置引数を直接受け取る規約（gateway.phpがcall_user_func_arrayで展開する）。
+// args にはこの3つに続く残りの引数（例: data, categoryKey）を渡す
 export async function callAmfphpService<T>(serviceName: string, methodName: string, args: unknown[]): Promise<T> {
-  const parameters = [[config.amfphp.userid, config.amfphp.key, AMFPHP_TARGET, ...args]]
+  const parameters = [config.amfphp.userid, config.amfphp.key, AMFPHP_TARGET, ...args]
 
   const res = await fetch(config.amfphp.gatewayUrl, {
     method: 'POST',

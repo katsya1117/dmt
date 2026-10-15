@@ -31,6 +31,11 @@ $body = json_decode(file_get_contents('php://input'));
 $serviceName = is_object($body) && isset($body->serviceName) ? $body->serviceName : '';
 $methodName = is_object($body) && isset($body->methodName) ? $body->methodName : '';
 $parameters = is_object($body) && isset($body->parameters) ? $body->parameters : [];
+// call_user_func_arrayは配列を要求するため、万一parametersが配列でない
+// 形で送られてきても落ちないよう安全策を取る
+if (!is_array($parameters)) {
+    $parameters = [];
+}
 
 // サービス名からファイルパスを組み立てる前にホワイトリスト形式で検証する
 // （ディレクトリトラバーサル・任意ファイルインクルード対策）
@@ -54,5 +59,9 @@ if (!class_exists($serviceName) || !method_exists($serviceName, $methodName)) {
     exit;
 }
 
+// call_user_func_array：$parametersの各要素を、サービスメソッドの個別の
+// 引数として展開して渡す（call_user_funcは$parameters全体を1つの引数として
+// 渡してしまうため、メソッド側で引数を分割して受け取れるようこちらを使う。
+// 2026-10-16方針変更。詳細はdocs/AMFPHP連携.md参照）
 $service = new $serviceName();
-echo json_encode(call_user_func([$service, $methodName], $parameters));
+echo json_encode(call_user_func_array([$service, $methodName], $parameters));
