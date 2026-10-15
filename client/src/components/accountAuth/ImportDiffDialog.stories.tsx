@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
+import { Provider as ReduxProvider } from 'react-redux'
 import Button from '@mui/material/Button'
+import { createStore } from '../../store'
 import { ImportDiffDialog } from './ImportDiffDialog'
 import type { ImportDiff } from '../../api/accountAuthImport'
 import type { AccountAuth } from '../../api/accountAuth'
@@ -86,6 +88,15 @@ function Harness({ diff }: { diff: ImportDiff }) {
 const meta: Meta<typeof Harness> = {
   title: 'accountAuth/ImportDiffDialog',
   component: Harness,
+  decorators: [
+    // 除外リスト管理ダイアログがRTK Query(useImportExcludeNumbersQuery等)を
+    // 使うため、AccountAuthTable.stories.tsxと同じくReduxストアで包む
+    (Story) => (
+      <ReduxProvider store={createStore()}>
+        <Story />
+      </ReduxProvider>
+    ),
+  ],
 }
 export default meta
 
