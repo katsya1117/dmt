@@ -5,7 +5,8 @@
     "gen:api": "yarn --cwd server tsoa && yarn --cwd client gen:types",
     "ensure:deps": "([ -x client/node_modules/.bin/vite ] || yarn --cwd client install) && ([ -d server/node_modules ] || yarn --cwd server install)",
     "predev": "yarn ensure:deps",
-    "dev": "concurrently -k -n client,server -c blue,green \"yarn --cwd client dev\" \"(yarn gen:api && yarn --cwd server dev) || true\"",
+    "dev": "concurrently -k -n client,server,php -c blue,green,magenta \"yarn --cwd client dev\" \"(yarn gen:api && yarn --cwd server dev) || true\" \"bash scripts/start-php-mock.sh\"",
+    "dev:php": "bash scripts/start-php-mock.sh",
     "dev:client": "yarn --cwd client dev",
     "dev:server": "yarn --cwd server dev"
   },
