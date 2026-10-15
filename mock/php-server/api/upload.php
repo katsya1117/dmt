@@ -29,7 +29,8 @@ if (strpos($katashiki, '..') !== false || strpos($katashiki, '/') !== false) {
     exit;
 }
 
-$uploadDir = '/var/www/html/uploads/' . $katashiki . '/';
+// Docker(/var/www/html/api) でも php -S（mock/php-server/api）でも同じ相対位置になるよう__DIR__基準にする
+$uploadDir = __DIR__ . '/../uploads/' . $katashiki . '/';
 if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
 }

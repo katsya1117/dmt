@@ -15,7 +15,6 @@ import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
-import TextField from '@mui/material/TextField'
 import Chip from '@mui/material/Chip'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
@@ -32,6 +31,7 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn'
 import { accountAuthApi } from '../store/services/accountAuthApi'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
+import { FilterInline } from '../components/accountAuth/filterVariants/FilterInline'
 import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
 import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
@@ -107,7 +107,7 @@ export default function AccountAuthTable() {
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const previewFileRef = useRef<HTMLInputElement>(null)
   // 大きいファイルだとサーバー側の解析に数秒かかる。ここが無いと「画面が固まった」
-  // と誤解される（docs/design/account-auth/13_状態遷移図.md で指摘済みの課題）
+  // と誤解される（docs/design/account-auth/13_状態遷移図.md で指摘済みの���題）
   const [previewLoading, setPreviewLoading] = useState(false)
 
   // No.とユーザー名は別欄・AND条件で絞り込む（onChangeで即時フィルタ）。
@@ -117,6 +117,7 @@ export default function AccountAuthTable() {
   // 再計算されるのを防ぐ（2026-07-14、絞り込みが重く感じる問題への対処）
   const [numberSearch, setNumberSearch] = useState('')
   const [accountNameSearch, setAccountNameSearch] = useState('')
+  const isFiltering = Boolean(numberSearch.trim() || accountNameSearch.trim())
   const filteredData = useMemo(() => data?.filter((row) => {
     const numQ = numberSearch.trim().toLowerCase()
     const userQ = accountNameSearch.trim().toLowerCase()
@@ -263,56 +264,56 @@ export default function AccountAuthTable() {
       sortable: false,
       renderCell: (params) =>
         params.row.delfg
-          ? <Chip label="削除済み" color="error" size="small" />
+          ? <Chip label="削���済み" color="error" size="small" />
           : <Chip label="有効" color="success" variant="outlined" size="small" />,
     },
   ], [openEdit])
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h1" gutterBottom>アカウント認証テーブル</Typography>
-
+      {/* 1段目：ページタイトル（左）とページ全体の操作（右） */}
       <Stack
         direction="row"
-        spacing={1}
         useFlexGap
-        sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}
+        sx={{ mb: 2.5, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}
       >
-        <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
-        <Button
-          variant="outlined"
-          startIcon={<UploadFileIcon />}
-          loading={previewLoading}
-          loadingPosition="start"
-          onClick={() => previewFileRef.current?.click()}
-        >
-          {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
-        </Button>
-        <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
-        {/* 検索欄は右寄せにして、左側の操作ボタン群と役割を視覚的に分ける */}
-        <TextField
-          size="small"
-          sx={{ ml: 'auto', width: 140 }}
-          label="No.で絞り込み"
-          placeholder="例: 1001"
-          value={numberSearch}
-          onChange={(e) => setNumberSearch(e.target.value)}
-        />
-        <TextField
-          size="small"
-          sx={{ width: 180 }}
-          label="ユーザー名で絞り込み"
-          placeholder="例: dealer001"
-          value={accountNameSearch}
-          onChange={(e) => setAccountNameSearch(e.target.value)}
-        />
+        <Typography variant="h1" sx={{ m: 0 }}>アカウント認証テーブル</Typography>
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            loading={previewLoading}
+            loadingPosition="start"
+            onClick={() => previewFileRef.current?.click()}
+          >
+            {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
+          <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
+        </Stack>
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}
 
-      {/* 列表示設定は表から独立させ、表の右上にアイコンのみで置く。ホバーで
-          背景が変わりボタンだと分かるようにし、ツールチップで用途を補う（2026-08-05） */}
-      <Stack direction="row" sx={{ mb: 0.5, justifyContent: 'flex-end' }}>
+      {/* 2段目：表専用のツールバー。左に絞り込み、右に件数と列表示設定。
+          列表示設定はアイコンのみで置き、ツールチップで用途を補う（2026-08-05） */}
+      <Stack direction="row" useFlexGap sx={{ mb: 1, alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <FilterInline
+          numberValue={numberSearch}
+          accountNameValue={accountNameSearch}
+          onNumberChange={setNumberSearch}
+          onAccountNameChange={setAccountNameSearch}
+        />
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          aria-live="polite"
+          sx={{ ml: 'auto', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+        >
+          {isFiltering
+            ? `${filteredData?.length ?? 0} / ${data?.length ?? 0} 件`
+            : `${data?.length ?? 0} 件`}
+        </Typography>
         <Tooltip title="列表示設定">
           <IconButton
             size="small"
@@ -346,7 +347,7 @@ export default function AccountAuthTable() {
           // 不可）。initialStateでpageSize=-1（全件を1ページに）を明示しないと、
           // デフォルトの100件だけが表示され、UIが無いので気づけない不具合になる
           // （2026-07-14、hideFooter追加時にこの指定を誤って消してしまい発生）。
-          // 総件数は下のTypographyで別途表示する
+          // 総件数は表上部のツールバーで別途表示する
           initialState={{
             pagination: { paginationModel: { pageSize: -1 } },
             // 水平スクロールを減らすため、優先度が低い列はデフォルト非表示。
@@ -369,10 +370,6 @@ export default function AccountAuthTable() {
           }}
         />
       </Box>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-        {filteredData?.length ?? 0} 件
-        {(numberSearch.trim() || accountNameSearch.trim()) && ` （全 ${data?.length ?? 0} 件中）`}
-      </Typography>
 
       <AccountAuthFormDialog
         open={dialogOpen}

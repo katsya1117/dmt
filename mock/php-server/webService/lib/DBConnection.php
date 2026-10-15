@@ -85,6 +85,26 @@ class DBConnection
                 del_fg INTEGER DEFAULT 0,
                 UNIQUE(category_key, category_id)
             )");
+
+            // [モック固有] 一覧APIは0件を「取得失敗」(503)扱いにするため、初回だけデモ用データを入れる。
+            // 内容はserver/src/db.tsの旧SQLiteデモのseedと同じ。パスワードは平文を保存しない（SHA-1）
+            $now = date('Y-m-d H:i:s');
+            $seed = $this->dbh->prepare("INSERT INTO t_inet_user_auth
+                (username, password, comment, number, submission_date, regist_date,
+                 company_cd, company_name, store_cd, store_name,
+                 company_store_cd, company_store_branch_num, non_sync, delfg, reg_date, upd_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)");
+            $rows = array(
+                array('dealer001', 'pw-001', '東日本エリア', 1001, '2024-04-01', '2024-04-05', 'C01', '北日本販売', 'S001', '札幌中央店', 'CS01', '01', 0),
+                array('dealer002', 'pw-002', null, 1002, '2024-05-10', '2024-05-12', 'C02', '東日本販売', 'S002', '仙台駅前店', 'CS02', '03', 1),
+                array('admin-honsha', 'pw-adm', '本社管理', 9001, null, '2023-01-01', 'C00', '本社', null, null, null, null, 0),
+            );
+            foreach ($rows as $row) {
+                $row[1] = sha1($row[1]);
+                $row[] = $now;
+                $row[] = $now;
+                $seed->execute($row);
+            }
         }
 
         return $this->status;
