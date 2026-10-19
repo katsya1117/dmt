@@ -270,6 +270,50 @@ export function computeImportDiff(
   return diff;
 }
 
+// 差分プレビューのレスポンスに平文パスワードを含めない（安全ルール）。
+// computeImportDiffの戻り値には record/after.password にExcelの生の値が
+// そのまま入っているが、これをHTTPレスポンスとして返すと、ハッシュ化される
+// 前の平文がブラウザのメモリ・devtools・キャッシュに残ってしまう
+// （一覧画面が見せているDB保存済みハッシュとは全く別の、本物の漏洩になる）。
+//
+// - 追加行：これから設定される初期パスワードなので「値の有無」だけ画面表示
+//   に必要（空なら別途validationErrorsで弾かれる）。真の値は固定文字列に
+//   置き換えて送る
+// - 変更/削除/リストア行：Excelのpassword列は比較（INPUT_FIELDS対象外）・
+//   適用（applyAccountAuthImportが明示的に除外）のどちらにも使わないため、
+//   値自体を送る必要が無い
+//
+// 【apply側は無関係】applyはpreviewの結果を信用せず、ファイルを再アップロード
+// して自前でcomputeImportDiffを呼び直すため、ここでの加工はハッシュ化や
+// DB反映の動作に一切影響しない（渡す先がHTTPレスポンスか、PHPへの書き込み
+// 処理かという経路の違いだけ）
+const PASSWORD_PRESENT_PLACEHOLDER = "********";
+
+export function redactImportDiffPasswords(diff: ImportDiff): ImportDiff {
+  return {
+    ...diff,
+    added: diff.added.map((a) => ({
+      ...a,
+      record: {
+        ...a.record,
+        password: a.record.password ? PASSWORD_PRESENT_PLACEHOLDER : "",
+      },
+    })),
+    changed: diff.changed.map((c) => ({
+      ...c,
+      after: { ...c.after, password: "" },
+    })),
+    deleted: diff.deleted.map((d) => ({
+      ...d,
+      after: { ...d.after, password: "" },
+    })),
+    restored: diff.restored.map((r) => ({
+      ...r,
+      after: { ...r.after, password: "" },
+    })),
+  };
+}
+
 // 適用前検証：壊れた行・ファイル内重複・必須欠けを弾く（安全ルール#5）
 // accountNameにDB UNIQUE制約は無い（客先の旧運用で重複accountNameが現役で存在する
 // ため）ので、この関数がaccountName重複を拒否する唯一の層。No.も同様にDB制約が

@@ -5,7 +5,7 @@ import {
   assertAccountAuthListLooksValid,
   type ApplyImportResult,
 } from '../repositories/accountAuth'
-import { computeImportDiff, validateImportRecords, applyValueNormalizeRules, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
+import { computeImportDiff, redactImportDiffPasswords, validateImportRecords, applyValueNormalizeRules, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
 import { parseAccountAuthExcelBuffer } from '../services/parseAccountAuthExcel'
 import { listImportValueNormalizeRules } from '../repositories/importValueNormalizeRules'
 
@@ -43,7 +43,7 @@ export class AccountAuthImportController extends Controller {
     }
     const diff = computeImportDiff(records, current)
     diff.validationErrors = validateImportRecords(records)
-    return diff
+    return redactImportDiffPasswords(diff)
   }
 
   /** 差分を承認後に適用。DBを再読込し差分を再計算してから反映する（プレビュー後のDB変化に追従）。

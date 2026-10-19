@@ -283,6 +283,7 @@ export function ImportDiffDialog({
       // コメントは運用担当者の手入力＋自動追記で長くなりがちなので、固定幅で
       // 切り詰めず残りの横幅いっぱいまで伸ばす
       const isComment = c.key === "comment";
+      const isPassword = c.key === "password";
       return {
         field: c.key,
         headerName: c.label,
@@ -317,11 +318,22 @@ export function ImportDiffDialog({
           const isChanged =
             params.row.changedFields.includes(c.key) || isCommentAutoAppended;
           const isCritical = isChanged && AUTH_CRITICAL_FIELDS.includes(c.key);
-          const display = c.format
-            ? c.format(v)
-            : v === null || v === undefined
-              ? ""
-              : String(v);
+          // passwordは行のkindで意味が違う列（isPasswordで分岐）。
+          // 追加行＝これから設定される初期パスワード（平文）なので値はあるが
+          // 伏せ字にする。変更/削除/リストア行＝Excelにこの列はあるが比較にも
+          // 適用にも使わない（既存のハッシュを保持する）ため、値があるように
+          // 見せると誤解を招く。「—」で「対象外」であることを示す
+          const display = isPassword
+            ? params.row.kind === "追加"
+              ? v
+                ? "********"
+                : ""
+              : "—"
+            : c.format
+              ? c.format(v)
+              : v === null || v === undefined
+                ? ""
+                : String(v);
           const content = (
             <Box
               component="span"

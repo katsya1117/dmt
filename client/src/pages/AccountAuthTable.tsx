@@ -237,6 +237,20 @@ export default function AccountAuthTable() {
       // セルにネイティブのtitle属性を付けてしまい、ブラウザ標準の飾り気の
       // ないツールチップになる。どの列も溢れうる（ユーザー名・販売会社名等）
       // ため、全列にMUIのTooltipを適用する
+      // password列は実体がSHA-1ハッシュ（平文ではない）とはいえ、見せても
+      // 運用上の意味が無く不要な情報露出になるため、常にアスタリスクで伏せる。
+      // 値の有無だけ見せ、ハッシュの長さ自体も漏らさないよう固定文字数にする
+      if (c.key === 'password') {
+        return {
+          field: c.key,
+          headerName: c.label,
+          minWidth: c.width,
+          flex: c.width,
+          sortable: false,
+          valueFormatter: (value) => (value ? '********' : ''),
+          renderCell: (params) => <OverflowTooltipCell value={String(params.formattedValue ?? '')} />,
+        }
+      }
       return {
         field: c.key,
         headerName: c.label,
