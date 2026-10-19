@@ -61,12 +61,20 @@ CREATE TABLE IF NOT EXISTS `_properties` (
 load($arg): $arg[0] = [userid, key, target, categoryKey]
   → SELECT * FROM _properties WHERE category_key = ? AND del_fg = 0 ORDER BY id
 
-update($arg): $arg[0] = [userid, key, target, data]
-  data = [{ updatemark: "INSERT"|"UPDATE", id?, category_key, category_id?, value1_1?, value1_2?, valid_fg?, del_fg? }, ...]
-  INSERT: category_idはcategory_key内でMAX(category_id)+1を求めてから採番
-  UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, category_key, del_fg:true}）。
+update($arg): $arg[0] = [userid, key, target, categoryKey, data]
+  data = [{ updatemark: "INSERT"|"UPDATE", id?, category_id?, value1_1?, value1_2?, valid_fg?, del_fg? }, ...]
+  INSERT: category_idはcategoryKey内でMAX(category_id)+1を求めてから採番
+  UPDATE: 渡された列だけをSET句に組み込む本当の部分更新（例: {id, del_fg:true}）。
     WHERE句はid=?に加えcategory_key=?も必須（他機能の行をidだけで誤って
     書き換えてしまう事故を防ぐため。_properties は複数機能の相乗りテーブル）
+
+**category_keyは呼び出し引数の方だけを持つ（2026-10-20変更）**: 当初は`data`の
+各要素にも`category_key`を持たせ、`update()`内でその値を引数の`categoryKey`に
+上書きして使っていたが、1回の`update()`呼び出しは常に1機能＝1カテゴリ内で
+完結する前提（呼び出し元はどの要素にも同じ定数を複製して渡すだけだった）のため、
+重複と「引数で渡しても使われない」という死んだパラメータの両方を生んでいた。
+`data`側の`category_key`を廃止し、引数`categoryKey`の方を正として全要素に使う
+よう統一した。
 ```
 
 **UPDATE時の部分更新について（2026-10-01方針転換）**: AMFPHPのインターフェース（JSON契約）自体は`DbManagerTInetUserAuth`を踏襲するが、CRUD処理の中身は新アプリ専用の新規実装であり、旧FLEXアプリとは共有しない（AMFPHPのインターフェースだけ流用し、処理は完全に別物）。そのため`DbManagerTInetUserAuth.update()`の「UPDATE文のSET句が全カラム固定」という制約（旧FLEXアプリ時代のレガシーコードに由来し、既存アプリへの影響を避けるため変更できない）を踏襲する理由が無く、`DbManagerProperties.update()`は渡された列だけを更新する設計にした。これにより`importExcludeList.ts`の削除処理は、対象行を読み直さず`{id, del_fg: true}`だけ送ればよい。

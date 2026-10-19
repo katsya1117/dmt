@@ -29,6 +29,9 @@ export const importExcludeListHandlers = [
     if (typeof number !== 'number' || !Number.isInteger(number)) {
       return HttpResponse.json({ error: 'numberは整数で指定してください' }, { status: 400 })
     }
+    if (rows.some((r) => r.number === number)) {
+      return HttpResponse.json({ error: `No.${number}は既に除外リストに登録されています` }, { status: 400 })
+    }
     rows.push({ id: nextId++, number, comment: body.comment ?? null })
     return HttpResponse.json(undefined, { status: 201 })
   }),

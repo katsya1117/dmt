@@ -32,6 +32,23 @@ export const importValueNormalizeRulesHandlers = [
     return HttpResponse.json(undefined, { status: 201 })
   }),
 
+  http.post('/api/account-auth/import/normalize-rules/:id', async ({ params, request }) => {
+    await delay(150)
+    const id = Number(params.id)
+    const body = (await request.json()) as { field?: string; fromValue?: string; toValue?: string }
+    if (!body.field || !body.fromValue || !body.toValue) {
+      return HttpResponse.json({ error: 'field/fromValue/toValueは必須です' }, { status: 400 })
+    }
+    const row = rows.find((r) => r.id === id)
+    if (!row) {
+      return HttpResponse.json({ error: '指定されたルールが見つかりません' }, { status: 404 })
+    }
+    row.field = body.field
+    row.fromValue = body.fromValue
+    row.toValue = body.toValue
+    return HttpResponse.json(undefined)
+  }),
+
   http.delete('/api/account-auth/import/normalize-rules/:id', async ({ params }) => {
     await delay(150)
     const id = Number(params.id)

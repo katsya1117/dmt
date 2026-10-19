@@ -11,7 +11,9 @@ import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import { accountAuthApi } from "../../store/services/accountAuthApi";
+import type { ImportValueNormalizeRule } from "../../api/importValueNormalizeRules";
 
 type Props = {
   open: boolean;
@@ -41,8 +43,11 @@ export function ImportValueNormalizeRulesDialog({ open, onClose }: Props) {
     accountAuthApi.useImportValueNormalizeRulesQuery();
   const [add, { isLoading: adding }] =
     accountAuthApi.useAddImportValueNormalizeRuleMutation();
+  const [update, { isLoading: updating }] =
+    accountAuthApi.useUpdateImportValueNormalizeRuleMutation();
   const [remove] = accountAuthApi.useRemoveImportValueNormalizeRuleMutation();
 
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [field, setField] = useState(NORMALIZABLE_FIELD_OPTIONS[0].key);
   const [fromValue, setFromValue] = useState("");
   const [toValue, setToValue] = useState("");
@@ -51,18 +56,39 @@ export function ImportValueNormalizeRulesDialog({ open, onClose }: Props) {
   const fieldLabel = (key: string) =>
     NORMALIZABLE_FIELD_OPTIONS.find((o) => o.key === key)?.label ?? key;
 
-  const handleAdd = async () => {
+  const resetForm = () => {
+    setEditingId(null);
+    setField(NORMALIZABLE_FIELD_OPTIONS[0].key);
+    setFromValue("");
+    setToValue("");
+  };
+
+  const handleEdit = (row: ImportValueNormalizeRule) => {
+    setError(null);
+    setEditingId(row.id);
+    setField(row.field);
+    setFromValue(row.fromValue);
+    setToValue(row.toValue);
+  };
+
+  const handleSubmit = async () => {
     setError(null);
     if (fromValue.trim() === "" || toValue.trim() === "") {
       setError("Excel側の値／DBとみなす値は空にできません");
       return;
     }
     try {
-      await add({ field, fromValue, toValue }).unwrap();
-      setFromValue("");
-      setToValue("");
+      if (editingId == null) {
+        await add({ field, fromValue, toValue }).unwrap();
+      } else {
+        await update({ id: editingId, field, fromValue, toValue }).unwrap();
+      }
+      resetForm();
     } catch (err) {
-      setError((err as Error).message ?? "追加に失敗しました");
+      setError(
+        (err as Error).message ??
+          (editingId == null ? "追加に失敗しました" : "更新に失敗しました"),
+      );
     }
   };
 
@@ -107,9 +133,14 @@ export function ImportValueNormalizeRulesDialog({ open, onClose }: Props) {
             onChange={(e) => setToValue(e.target.value)}
             fullWidth
           />
-          <Button variant="contained" onClick={handleAdd} disabled={adding}>
-            追加
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={adding || updating}
+          >
+            {editingId == null ? "追加" : "更新"}
           </Button>
+          {editingId != null && <Button onClick={resetForm}>キャンセル</Button>}
         </Stack>
         <Stack spacing={1}>
           {rows.length === 0 && !isFetching && (
@@ -122,7 +153,10 @@ export function ImportValueNormalizeRulesDialog({ open, onClose }: Props) {
               key={r.id}
               direction="row"
               spacing={1}
-              sx={{ alignItems: "center" }}
+              sx={{
+                alignItems: "center",
+                bgcolor: r.id === editingId ? "action.selected" : undefined,
+              }}
             >
               <Typography variant="body2" sx={{ width: 140 }}>
                 {fieldLabel(r.field)}
@@ -138,8 +172,18 @@ export function ImportValueNormalizeRulesDialog({ open, onClose }: Props) {
               </Typography>
               <IconButton
                 size="small"
+                aria-label="編集"
+                onClick={() => handleEdit(r)}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
                 aria-label="削除"
-                onClick={() => remove(r.id)}
+                onClick={() => {
+                  if (r.id === editingId) resetForm();
+                  remove(r.id);
+                }}
               >
                 <DeleteIcon fontSize="small" />
               </IconButton>

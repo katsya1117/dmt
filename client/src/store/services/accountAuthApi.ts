@@ -34,6 +34,7 @@ import {
 import {
   fetchImportValueNormalizeRules,
   addImportValueNormalizeRule,
+  updateImportValueNormalizeRule,
   removeImportValueNormalizeRule,
   type ImportValueNormalizeRule,
 } from '../../api/importValueNormalizeRules'
@@ -153,6 +154,20 @@ export const accountAuthApi = createApi({
       queryFn: async ({ field, fromValue, toValue }) => {
         try {
           return { data: await addImportValueNormalizeRule(field, fromValue, toValue) }
+        } catch (err) {
+          return { error: err as ApiError }
+        }
+      },
+      invalidatesTags: ['ImportValueNormalizeRules'],
+    }),
+
+    updateImportValueNormalizeRule: builder.mutation<
+      void,
+      { id: number; field: string; fromValue: string; toValue: string }
+    >({
+      queryFn: async ({ id, field, fromValue, toValue }) => {
+        try {
+          return { data: await updateImportValueNormalizeRule(id, field, fromValue, toValue) }
         } catch (err) {
           return { error: err as ApiError }
         }

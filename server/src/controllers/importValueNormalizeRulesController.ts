@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Path, Post, Route, SuccessResponse, Resp
 import {
   listImportValueNormalizeRules,
   addImportValueNormalizeRule,
+  updateImportValueNormalizeRule,
   removeImportValueNormalizeRule,
   type ImportValueNormalizeRule,
 } from '../repositories/importValueNormalizeRules'
@@ -48,6 +49,24 @@ export class ImportValueNormalizeRulesController extends Controller {
     }
     await addImportValueNormalizeRule(body.field, body.fromValue, body.toValue)
     this.setStatus(201)
+  }
+
+  /** 更新。fieldの検証条件は追加と同じ */
+  @Post('{id}')
+  @Response<ImportValueNormalizeRuleErrorResponse>(400, '検証エラー')
+  public async updateNormalizeRule(
+    @Path() id: number,
+    @Body() body: AddImportValueNormalizeRuleBody,
+  ): Promise<void | ImportValueNormalizeRuleErrorResponse> {
+    if (!NORMALIZABLE_FIELDS.some((f) => f === body.field)) {
+      this.setStatus(400)
+      return { error: `fieldは次のいずれかで指定してください: ${NORMALIZABLE_FIELDS.join(', ')}` }
+    }
+    if (body.fromValue === '' || body.toValue === '') {
+      this.setStatus(400)
+      return { error: 'fromValue/toValueは空にできません' }
+    }
+    await updateImportValueNormalizeRule(id, body.field, body.fromValue, body.toValue)
   }
 
   /** 削除（論理削除。del_fg=1にする。物理削除ではない） */

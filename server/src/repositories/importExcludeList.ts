@@ -52,7 +52,6 @@ export async function addImportExcludeNumber(
     [
       {
         updatemark: "INSERT",
-        category_key: CATEGORY_KEY,
         value1_1: String(number),
         value1_2: comment,
       },
@@ -63,6 +62,6 @@ export async function addImportExcludeNumber(
 export async function removeImportExcludeNumber(id: number): Promise<void> {
   await callAmfphpService("DbManagerProperties", "update", [
     CATEGORY_KEY,
-    [{ updatemark: "UPDATE", id, category_key: CATEGORY_KEY, del_fg: true }],
+    [{ updatemark: "UPDATE", id, del_fg: true }],
   ]);
 }

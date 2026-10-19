@@ -40,6 +40,13 @@ export class ImportExcludeNumbersController extends Controller {
       this.setStatus(400)
       return { error: 'numberは整数で指定してください' }
     }
+    // 重複判定はアクティブな（論理削除されていない）行の間でのみ行う。
+    // 一度除外リストから外したNoの復活は想定しないため、論理削除済み行は無視する
+    const existing = await listImportExcludeNumbers()
+    if (existing.some((e) => e.number === body.number)) {
+      this.setStatus(400)
+      return { error: `No.${body.number}は既に除外リストに登録されています` }
+    }
     await addImportExcludeNumber(body.number, body.comment ?? null)
     this.setStatus(201)
   }

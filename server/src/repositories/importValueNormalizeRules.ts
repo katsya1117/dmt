@@ -58,7 +58,26 @@ export async function addImportValueNormalizeRule(
     [
       {
         updatemark: "INSERT",
-        category_key: CATEGORY_KEY,
+        value1_1: field,
+        value1_2: fromValue,
+        value1_3: toValue,
+      },
+    ],
+  ]);
+}
+
+export async function updateImportValueNormalizeRule(
+  id: number,
+  field: string,
+  fromValue: string,
+  toValue: string,
+): Promise<void> {
+  await callAmfphpService("DbManagerProperties", "update", [
+    CATEGORY_KEY,
+    [
+      {
+        updatemark: "UPDATE",
+        id,
         value1_1: field,
         value1_2: fromValue,
         value1_3: toValue,
@@ -70,6 +89,6 @@ export async function addImportValueNormalizeRule(
 export async function removeImportValueNormalizeRule(id: number): Promise<void> {
   await callAmfphpService("DbManagerProperties", "update", [
     CATEGORY_KEY,
-    [{ updatemark: "UPDATE", id, category_key: CATEGORY_KEY, del_fg: true }],
+    [{ updatemark: "UPDATE", id, del_fg: true }],
   ]);
 }

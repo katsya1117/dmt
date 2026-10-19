@@ -31,7 +31,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /** @description 更新。fieldの検証条件は追加と同じ */
+        post: operations["UpdateNormalizeRule"];
         /** @description 削除（論理削除。del_fg=1にする。物理削除ではない） */
         delete: operations["RemoveNormalizeRule"];
         options?: never;
@@ -346,6 +347,41 @@ export interface operations {
         responses: {
             /** @description Created */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown | components["schemas"]["ImportValueNormalizeRuleErrorResponse"];
+                };
+            };
+            /** @description 検証エラー */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportValueNormalizeRuleErrorResponse"];
+                };
+            };
+        };
+    };
+    UpdateNormalizeRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddImportValueNormalizeRuleBody"];
+            };
+        };
+        responses: {
+            /** @description Ok */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

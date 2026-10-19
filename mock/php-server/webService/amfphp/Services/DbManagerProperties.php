@@ -75,7 +75,14 @@ class DbManagerProperties
             $now = date('Y-m-d H:i:s');
             foreach ($data as $info) {
                 $updatemark = isset($info->updatemark) ? $info->updatemark : null;
-                $categoryKey = isset($info->category_key) ? $info->category_key : null;
+                // category_keyは呼び出し時の引数($categoryKey)だけを信頼する。
+                // 1回のupdate()呼び出しは常に1機能＝1カテゴリ内で完結する前提
+                // （_properties は複数機能の相乗りテーブルだが、1回の呼び出しで
+                // 複数カテゴリを混在させる使われ方は無い）ため、$infoに
+                // category_keyを持たせる必要が無い（かつては引数を即座に
+                // $info->category_keyで上書きしていたが、どの呼び出し元も
+                // 結局同じ定数を複製して渡すだけだったため、2026-10-20に
+                // 引数の方を正とする設計に変更した）
 
                 if ($updatemark === 'INSERT') {
                     // category_idはcategory_key内の連番（2026-10-02、既存データの実際の
@@ -128,7 +135,7 @@ class DbManagerProperties
                     $values[] = $info->id;
                     // _properties は複数機能の相乗りテーブルのため、idだけでなく
                     // category_keyも一致する行だけを更新する（他機能の行を誤って
-                    // 書き換えてしまう事故を防ぐ）。呼び出し側は必ずcategory_keyを渡すこと
+                    // 書き換えてしまう事故を防ぐ）。呼び出し元の引数($categoryKey)が正
                     $values[] = $categoryKey;
 
                     $ret = $db->execute(

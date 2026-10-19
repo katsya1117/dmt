@@ -27,6 +27,19 @@ export async function addImportValueNormalizeRule(
   }
 }
 
+export async function updateImportValueNormalizeRule(
+  id: number,
+  field: string,
+  fromValue: string,
+  toValue: string,
+): Promise<void> {
+  try {
+    await http.post(`${BASE_PATH}/${id}`, { field, fromValue, toValue })
+  } catch (err) {
+    throw toApiError(err, '比較前値置換ルールの更新に失敗しました')
+  }
+}
+
 export async function removeImportValueNormalizeRule(id: number): Promise<void> {
   try {
     await http.delete(`${BASE_PATH}/${id}`)
