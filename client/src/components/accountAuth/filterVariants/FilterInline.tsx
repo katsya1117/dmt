@@ -59,20 +59,58 @@ export function FilterInline({ numberValue, accountNameValue, onNumberChange, on
   const hasAny = Boolean(numberValue || accountNameValue)
 
   return (
-    <Box role="search" aria-label="レコードの絞り込み" sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-      <InlineField label="No." value={numberValue} width={150} numeric onChange={onNumberChange} />
-      <InlineField label="ユーザー名" value={accountNameValue} width={240} onChange={onAccountNameChange} />
-      {hasAny && (
-        <ButtonBase
-          onClick={() => {
-            onNumberChange('')
-            onAccountNameChange('')
-          }}
-          sx={{ fontFamily: 'inherit', fontSize: '0.75rem', px: 1, height: 28, borderRadius: '6px', color: 'text.secondary', '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } }}
-        >
-          すべてクリア
-        </ButtonBase>
-      )}
+    // 【角丸の囲み＋罫線に重ねたラベルで「絞り込み」の意味を示す】
+    // 本物のfieldset/legendはブラウザ間でflexレイアウトとの相性にクセがある
+    // （特にSafari/WebKitでlegendがflexアイテムとして正しく除外されず、
+    // 想定外の折り返し・余白を生む既知の問題がある）ため採用しない。
+    // position: relativeな枠の上端に、ラベルをposition: absoluteで重ねて
+    // 同じ見た目だけを再現する（レイアウト計算には一切参加させない）
+    <Box role="search" aria-label="レコードの絞り込み" sx={{ position: 'relative' }}>
+      <Box
+        component="span"
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          top: -9,
+          left: 10,
+          px: 0.75,
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: 'text.secondary',
+          bgcolor: 'background.default',
+          lineHeight: 1.4,
+        }}
+      >
+        絞り込み
+      </Box>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          px: 1.5,
+          pt: 1.75,
+          pb: 1.25,
+          border: '1px solid',
+          borderColor: '#e2e8f0',
+          borderRadius: '10px',
+        }}
+      >
+        <InlineField label="No." value={numberValue} width={150} numeric onChange={onNumberChange} />
+        <InlineField label="ユーザー名" value={accountNameValue} width={240} onChange={onAccountNameChange} />
+        {hasAny && (
+          <ButtonBase
+            onClick={() => {
+              onNumberChange('')
+              onAccountNameChange('')
+            }}
+            sx={{ fontFamily: 'inherit', fontSize: '0.75rem', px: 1, height: 28, borderRadius: '6px', color: 'text.secondary', '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } }}
+          >
+            すべてクリア
+          </ButtonBase>
+        )}
+      </Box>
     </Box>
   )
 }
