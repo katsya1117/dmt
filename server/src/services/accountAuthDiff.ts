@@ -341,8 +341,19 @@ export function validateImportRecords(
   records: AccountAuthInput[],
   existingNumbers: ReadonlySet<number> = new Set(),
   existingAccountNames: ReadonlySet<string> = new Set(),
+  // Excel取り込み専用（手動追加・更新は渡さず、今まで通りrecordの値だけを見る）。
+  // 客先管理簿の解約日欄の誤記でdelfgが古いまま(false)残ることがあるため、
+  // accountName重複チェックの「削除済みは対象外」判定はDBの現状を優先する。
+  // 詳細はdocs/アカウント認証_Excel取り込み設計.md「accountName重複チェックの
+  // delfg判定（2026-10-23）」参照
+  current: readonly AccountAuth[] = [],
 ): ValidationError[] {
   const errors: ValidationError[] = [];
+  const currentDelfgByNumber = new Map(
+    current
+      .filter((c): c is AccountAuth & { number: number } => c.number != null)
+      .map((c) => [c.number, c.delfg] as const),
+  );
   // 【No.・accountNameで相手の行を記録する】ユーザーは取り込みファイルの
   // 「何行目」かではなく、業務で使うNo.（管理番号）で行を識別する。
   // 「N行目」という表示はユーザーにとって何の目印にもならない上、パース時に
@@ -395,8 +406,14 @@ export function validateImportRecords(
       }
     }
     // accountName重複チェックだけは削除済み行（delfg=true）を対象外にする
-    // （空き番号扱いという業務ルールのため。No.とは扱いが異なる点に注意）
-    if (r.delfg) return;
+    // （空き番号扱いという業務ルールのため。No.とは扱いが異なる点に注意）。
+    // 「削除済みか」は、DBの現状(currentDelfgByNumber)がtrueならそちらを
+    // 優先する（手動パスはcurrent未指定なので常にrの値、挙動は変わらない）
+    const isDeleted =
+      r.number != null && currentDelfgByNumber.get(r.number) === true
+        ? true
+        : r.delfg;
+    if (isDeleted) return;
     if (r.accountName) {
       const first = firstNumberLabelForAccountName.get(r.accountName);
       if (first != null) {
@@ -414,6 +431,51 @@ export function validateImportRecords(
     }
   });
   return errors;
+}
+
+// apply直前の最終ガード：チェックボックスで選択された内容を実際に書き込んだ
+// 結果、生きている(delfg=false)accountNameが新たに重複しないかを確認する。
+// validateImportRecordsはファイル全体に対する事前チェックで、applyLinesに
+// よる絞り込み後の「この組み合わせで適用した結果」までは見ていないため、
+// 書き込み直前に別途この関数でチェックする。詳細は
+// docs/アカウント認証_Excel取り込み設計.md「accountName重複チェックの
+// delfg判定（2026-10-23）」参照
+export function findNewLiveAccountNameDuplicates(
+  current: readonly AccountAuth[],
+  params: {
+    added: AccountAuthInput[];
+    changed: { id: number; after: AccountAuthInput }[];
+    deleted: { id: number }[];
+    restored: { id: number }[];
+  },
+): string[] {
+  const touchedIds = new Set<number>([
+    ...params.changed.map((c) => c.id),
+    ...params.deleted.map((d) => d.id),
+    ...params.restored.map((r) => r.id),
+  ]);
+  const restoredIds = new Set(params.restored.map((r) => r.id));
+  const liveNames: string[] = [];
+
+  for (const c of current) {
+    if (touchedIds.has(c.id)) {
+      // restoredはdelfgのみtrue→falseになる（accountName等は現状維持のまま
+      // 書き込まれる。applyAccountAuthImportのrestored処理と同じ前提）
+      if (restoredIds.has(c.id) && c.accountName) liveNames.push(c.accountName);
+      continue;
+    }
+    if (!c.delfg && c.accountName) liveNames.push(c.accountName);
+  }
+  for (const a of params.added) {
+    if (!a.delfg && a.accountName) liveNames.push(a.accountName);
+  }
+  for (const c of params.changed) {
+    if (!c.after.delfg && c.after.accountName) liveNames.push(c.after.accountName);
+  }
+
+  const counts = new Map<string, number>();
+  for (const n of liveNames) counts.set(n, (counts.get(n) ?? 0) + 1);
+  return [...counts.entries()].filter(([, n]) => n >= 2).map(([name]) => name);
 }
 
 // 手動追加・更新は常に1件だけの検証なので、対象は常に自分自身であり

@@ -5,7 +5,7 @@ import {
   assertAccountAuthListLooksValid,
   type ApplyImportResult,
 } from '../repositories/accountAuth'
-import { computeImportDiff, redactImportDiffPasswords, validateImportRecords, applyValueNormalizeRules, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
+import { computeImportDiff, redactImportDiffPasswords, validateImportRecords, applyValueNormalizeRules, findNewLiveAccountNameDuplicates, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
 import { parseAccountAuthExcelBuffer } from '../services/parseAccountAuthExcel'
 import { listImportValueNormalizeRules } from '../repositories/importValueNormalizeRules'
 
@@ -42,7 +42,7 @@ export class AccountAuthImportController extends Controller {
       return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
     }
     const diff = computeImportDiff(records, current)
-    diff.validationErrors = validateImportRecords(records)
+    diff.validationErrors = validateImportRecords(records, undefined, undefined, current)
     return redactImportDiffPasswords(diff)
   }
 
@@ -64,17 +64,17 @@ export class AccountAuthImportController extends Controller {
     const rawRecords = await parseAccountAuthExcelBuffer(file.buffer)
     const normalizeRules = await listImportValueNormalizeRules()
     const records = applyValueNormalizeRules(rawRecords, normalizeRules)
-    const errors = validateImportRecords(records)
-    if (errors.length > 0) {
-      this.setStatus(400)
-      return { error: '検証エラーがあります', errors }
-    }
     const current = await listAllAccountAuth()
     try {
       assertAccountAuthListLooksValid(current)
     } catch (e: unknown) {
       this.setStatus(503)
       return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
+    }
+    const errors = validateImportRecords(records, undefined, undefined, current)
+    if (errors.length > 0) {
+      this.setStatus(400)
+      return { error: '検証エラーがあります', errors }
     }
     const diff = computeImportDiff(records, current)
 
@@ -107,11 +107,26 @@ export class AccountAuthImportController extends Controller {
       }
     }
 
-    return await applyAccountAuthImport({
+    const applyParams = {
       added: diff.added.map((a) => a.record),
       changed: diff.changed.map((c) => ({ id: c.before.id, after: c.after })),
       deleted: diff.deleted.map((d) => ({ id: d.before.id, comment: d.after.comment ?? '' })),
       restored: diff.restored.map((r) => ({ id: r.before.id, comment: r.after.comment ?? '' })),
-    })
+    }
+
+    // 最終ガード：選択されたチェックボックスの組み合わせを実際に適用した結果、
+    // 生きているaccountNameが新たに重複しないかを確認する。validateImportRecords
+    // はファイル全体に対する事前チェックなので、applyLinesで一部だけ選んだ場合の
+    // 「この組み合わせで適用すると重複が生まれる」までは検知できないため、
+    // 書き込み直前にこの結果ベースのチェックで最後に弾く
+    const duplicateNames = findNewLiveAccountNameDuplicates(current, applyParams)
+    if (duplicateNames.length > 0) {
+      this.setStatus(400)
+      return {
+        error: `この内容を適用すると、同じaccountNameが複数の有効なアカウントで重複します: ${duplicateNames.join(', ')}`,
+      }
+    }
+
+    return await applyAccountAuthImport(applyParams)
   }
 }
