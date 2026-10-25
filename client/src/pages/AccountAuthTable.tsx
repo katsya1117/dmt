@@ -28,9 +28,13 @@ import { DataGrid, useGridApiRef, GridPreferencePanelsValue, type GridColDef } f
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
+import PlaylistRemoveIcon from '@mui/icons-material/PlaylistRemove'
+import FindReplaceIcon from '@mui/icons-material/FindReplace'
 import { accountAuthApi } from '../store/services/accountAuthApi'
 import { AccountAuthFormDialog } from '../components/accountAuth/AccountAuthFormDialog'
 import { ImportDiffDialog } from '../components/accountAuth/ImportDiffDialog'
+import { ImportExcludeNumbersDialog } from '../components/accountAuth/ImportExcludeNumbersDialog'
+import { ImportValueNormalizeRulesDialog } from '../components/accountAuth/ImportValueNormalizeRulesDialog'
 import { FilterInline } from '../components/accountAuth/filterVariants/FilterInline'
 import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
@@ -109,6 +113,12 @@ export default function AccountAuthTable() {
   // 大きいファイルだとサーバー側の解析に数秒かかる。ここが無いと「画面が固まった」
   // と誤解される（docs/design/account-auth/13_状態遷移図.md で指摘済みの���題）
   const [previewLoading, setPreviewLoading] = useState(false)
+  // 除外リスト・正規化ルールの管理ダイアログ。取り込みの差分プレビューとは
+  // 独立した「次回以降ずっと効く設定」なので、プレビューを開かなくても
+  // ここから直接開けるようにする（以前はImportDiffDialog内にしか入口が無く、
+  // Excelを取り込んで初めてたどり着ける導線になっていたため移設。2026-10-26）
+  const [excludeListDialogOpen, setExcludeListDialogOpen] = useState(false)
+  const [normalizeRulesDialogOpen, setNormalizeRulesDialogOpen] = useState(false)
 
   // No.とユーザー名は別欄・AND条件で絞り込む（onChangeで即時フィルタ）。
   // 以前は1つの欄でOR検索していたが、accountNameに数字を含むデータ
@@ -302,6 +312,26 @@ export default function AccountAuthTable() {
           >
             {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
           </Button>
+          <Tooltip title="除外リスト管理">
+            <IconButton
+              size="small"
+              aria-label="除外リスト管理"
+              onClick={() => setExcludeListDialogOpen(true)}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+            >
+              <PlaylistRemoveIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="比較前値置換ルール管理">
+            <IconButton
+              size="small"
+              aria-label="比較前値置換ルール管理"
+              onClick={() => setNormalizeRulesDialogOpen(true)}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+            >
+              <FindReplaceIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
           <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
         </Stack>
@@ -401,6 +431,15 @@ export default function AccountAuthTable() {
         onClose={() => setDiffOpen(false)}
         onApply={handleApply}
         applying={applying}
+      />
+
+      <ImportExcludeNumbersDialog
+        open={excludeListDialogOpen}
+        onClose={() => setExcludeListDialogOpen(false)}
+      />
+      <ImportValueNormalizeRulesDialog
+        open={normalizeRulesDialogOpen}
+        onClose={() => setNormalizeRulesDialogOpen(false)}
       />
 
       <Snackbar

@@ -3,6 +3,8 @@ import { Provider as ReduxProvider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
 import { createStore } from '../store'
 import { accountAuthHandlers, resetAccountAuthMock } from '../mocks/accountAuthHandlers'
+import { importExcludeListHandlers, resetImportExcludeNumbersMock } from '../mocks/importExcludeListHandlers'
+import { importValueNormalizeRulesHandlers, resetImportValueNormalizeRulesMock } from '../mocks/importValueNormalizeRulesHandlers'
 import AccountAuthTable from './AccountAuthTable'
 
 const meta: Meta<typeof AccountAuthTable> = {
@@ -10,12 +12,17 @@ const meta: Meta<typeof AccountAuthTable> = {
   component: AccountAuthTable,
   parameters: {
     layout: 'fullscreen',
-    msw: { handlers: accountAuthHandlers },
+    // 除外リスト・正規化ルールの管理ボタンをツールバーに常設したため
+    // （2026-10-26、ImportDiffDialogから移設）、この画面のマウント時点で
+    // 両方のクエリが走る。ハンドラも合わせて登録する
+    msw: { handlers: [...accountAuthHandlers, ...importExcludeListHandlers, ...importValueNormalizeRulesHandlers] },
   },
   decorators: [
     (Story) => {
       // ストーリーごとにモック状態とRTK Queryキャッシュ（＝store）を初期化
       resetAccountAuthMock()
+      resetImportExcludeNumbersMock()
+      resetImportValueNormalizeRulesMock()
       return (
         <ReduxProvider store={createStore()}>
           <BrowserRouter>

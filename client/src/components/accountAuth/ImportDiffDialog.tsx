@@ -21,15 +21,11 @@ import {
   type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
-import PlaylistRemoveIcon from "@mui/icons-material/PlaylistRemove";
-import FindReplaceIcon from "@mui/icons-material/FindReplace";
 import type { ImportDiff } from "../../api/accountAuthImport";
 import { AUTH_CRITICAL_FIELDS } from "../../api/accountAuthImport";
 import type { AccountAuthInput } from "../../api/accountAuth";
 import { OverflowTooltipCell } from "../dataGrid/OverflowTooltipCell";
 import { accountAuthApi } from "../../store/services/accountAuthApi";
-import { ImportExcludeNumbersDialog } from "./ImportExcludeNumbersDialog";
-import { ImportValueNormalizeRulesDialog } from "./ImportValueNormalizeRulesDialog";
 
 type Props = {
   open: boolean;
@@ -238,8 +234,6 @@ export function ImportDiffDialog({
   // （「適用されるかどうか」はチェックボックスの状態だけが真実の情報源、という
   // 二重管理を避ける設計のため）
   const [maskExcluded, setMaskExcluded] = useState(false);
-  const [excludeListDialogOpen, setExcludeListDialogOpen] = useState(false);
-  const [normalizeRulesDialogOpen, setNormalizeRulesDialogOpen] = useState(false);
   const visibleRows = maskExcluded
     ? rows.filter(
         (r) => r.record.number == null || !excludeSet.has(r.record.number),
@@ -357,7 +351,6 @@ export function ImportDiffDialog({
   ];
 
   return (
-    <>
     <Dialog
       open={open}
       onClose={onClose}
@@ -386,32 +379,6 @@ export function ImportDiffDialog({
             label="除外リストの行を隠す"
             sx={{ mr: 1 }}
           />
-          <Tooltip title="除外リスト管理">
-            <IconButton
-              size="small"
-              aria-label="除外リスト管理"
-              onClick={() => setExcludeListDialogOpen(true)}
-              sx={{
-                color: "text.secondary",
-                "&:hover": { bgcolor: "action.hover" },
-              }}
-            >
-              <PlaylistRemoveIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="比較前値置換ルール管理">
-            <IconButton
-              size="small"
-              aria-label="比較前値置換ルール管理"
-              onClick={() => setNormalizeRulesDialogOpen(true)}
-              sx={{
-                color: "text.secondary",
-                "&:hover": { bgcolor: "action.hover" },
-              }}
-            >
-              <FindReplaceIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
           <Tooltip title="列表示設定">
             <IconButton
               size="small"
@@ -533,14 +500,5 @@ export function ImportDiffDialog({
         </Button>
       </DialogActions>
     </Dialog>
-    <ImportExcludeNumbersDialog
-      open={excludeListDialogOpen}
-      onClose={() => setExcludeListDialogOpen(false)}
-    />
-    <ImportValueNormalizeRulesDialog
-      open={normalizeRulesDialogOpen}
-      onClose={() => setNormalizeRulesDialogOpen(false)}
-    />
-    </>
   );
 }
