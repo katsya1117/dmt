@@ -23,6 +23,7 @@ import {
   deleteAccountAuth,
   type AccountAuth,
   type AccountAuthInput,
+  type AccountAuthTarget,
 } from '../../api/accountAuth'
 import { applyImport, type ApplyImportResult } from '../../api/accountAuthImport'
 import {
@@ -46,10 +47,11 @@ export const accountAuthApi = createApi({
   tagTypes: ['AccountAuth', 'ImportExcludeNumbers', 'ImportValueNormalizeRules'],
   endpoints: (builder) => ({
     // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
-    accountAuthList: builder.query<AccountAuth[], void>({
-      queryFn: async () => {
+    // 引数なし＝通常アカウント。'diag' でDIAG用アカウント（同じ構造の別テーブル）
+    accountAuthList: builder.query<AccountAuth[], AccountAuthTarget | void>({
+      queryFn: async (target) => {
         try {
-          return { data: await fetchAccountAuthList() }
+          return { data: await fetchAccountAuthList(target ?? 'normal') }
         } catch (err) {
           return { error: err as ApiError }
         }
@@ -69,10 +71,10 @@ export const accountAuthApi = createApi({
       invalidatesTags: ['AccountAuth'],
     }),
 
-    updateAccountAuth: builder.mutation<AccountAuth, { id: number; input: AccountAuthInput }>({
-      queryFn: async ({ id, input }) => {
+    updateAccountAuth: builder.mutation<AccountAuth, { id: number; input: AccountAuthInput; target?: AccountAuthTarget }>({
+      queryFn: async ({ id, input, target }) => {
         try {
-          return { data: await updateAccountAuth(id, input) }
+          return { data: await updateAccountAuth(id, input, target ?? 'normal') }
         } catch (err) {
           return { error: err as ApiError }
         }

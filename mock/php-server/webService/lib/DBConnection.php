@@ -105,6 +105,24 @@ class DBConnection
                 $row[] = $now;
                 $seed->execute($row);
             }
+
+            // DIAG用テーブルのデモ用データ（通常にもいる人と、DIAG用にしかいない人を混ぜる）
+            $seedDiag = $this->dbh->prepare("INSERT INTO t_inet_user_auth_ds3
+                (username, password, comment, number, submission_date, regist_date,
+                 company_cd, company_name, store_cd, store_name,
+                 company_store_cd, company_store_branch_num, non_sync, delfg, reg_date, upd_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $diagRows = array(
+                array('dealer001', 'pw-001', '通常にも登録あり', 1001, '2024-04-01', '2024-04-05', 'C01', '北日本販売', 'S001', '札幌中央店', 'CS01', '01', 0, 0),
+                array('diag-only01', 'pw-d01', 'DIAGのみの契約', 2001, '2024-06-01', '2024-06-03', 'C03', '西日本販売', 'S010', '大阪南店', 'CS03', '02', 0, 0),
+                array('diag-old02', 'pw-d02', null, 2002, '2023-02-01', '2023-02-02', 'C03', '西日本販売', 'S011', '神戸店', 'CS03', '04', 0, 1),
+            );
+            foreach ($diagRows as $row) {
+                $row[1] = sha1($row[1]);
+                $row[] = $now;
+                $row[] = $now;
+                $seedDiag->execute($row);
+            }
         }
 
         return $this->status;

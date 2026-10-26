@@ -16,11 +16,13 @@ import { http } from './http'
 
 export type AccountAuth = components['schemas']['AccountAuth']
 export type AccountAuthInput = components['schemas']['AccountAuthInput']
+// 操作対象のテーブル。normal=通常アカウント／diag=DIAG用アカウント（同じ構造の別テーブル）
+export type AccountAuthTarget = components['schemas']['AccountAuthTarget']
 
 // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
-export async function fetchAccountAuthList(): Promise<AccountAuth[]> {
+export async function fetchAccountAuthList(target: AccountAuthTarget = 'normal'): Promise<AccountAuth[]> {
   try {
-    const res = await http.get<AccountAuth[]>('/api/account-auth')
+    const res = await http.get<AccountAuth[]>('/api/account-auth', { params: { target } })
     return res.data
   } catch (err) {
     throw toApiError(err, 'アカウント認証一覧の取得に失敗しました')
@@ -37,9 +39,13 @@ export async function createAccountAuth(records: AccountAuthInput[]): Promise<{ 
   }
 }
 
-export async function updateAccountAuth(id: number, input: AccountAuthInput): Promise<AccountAuth> {
+export async function updateAccountAuth(
+  id: number,
+  input: AccountAuthInput,
+  target: AccountAuthTarget = 'normal',
+): Promise<AccountAuth> {
   try {
-    const res = await http.put<AccountAuth>(`/api/account-auth/${id}`, input)
+    const res = await http.put<AccountAuth>(`/api/account-auth/${id}`, input, { params: { target } })
     return res.data
   } catch (err) {
     throw toApiError(err, '更新に失敗しました')

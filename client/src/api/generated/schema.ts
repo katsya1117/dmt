@@ -131,7 +131,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
+        /**
+         * @description 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する）。
+         *     target: normal=通常アカウント（既定）／diag=DIAG用アカウント（同じ構造の別テーブル）
+         */
         get: operations["List"];
         put?: never;
         /**
@@ -141,7 +144,9 @@ export interface paths {
          *     (delfg=false)レコード同士」でのみ判定する（削除済みのaccountNameは再利用可、
          *     という客先の運用要望のため）。
          *     accountNameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
-         *     ので、重複拒否はこのアプリ層の検証が唯一の砦
+         *     ので、重複拒否はこのアプリ層の検証が唯一の砦。
+         *     DIAG用(target=diag)への新規追加は受け付けない（DIAGアカウントは廃止予定で、
+         *     既存行の維持・論理削除・復活だけを扱う）
          */
         post: operations["Create"];
         delete?: never;
@@ -300,6 +305,8 @@ export interface components {
         ErrorResponse: {
             error: string;
         };
+        /** @enum {string} */
+        AccountAuthTarget: "normal" | "diag";
         CreateAccountAuthBody: {
             records: components["schemas"]["AccountAuthInput"][];
         };
@@ -578,7 +585,9 @@ export interface operations {
     };
     List: {
         parameters: {
-            query?: never;
+            query?: {
+                target?: components["schemas"]["AccountAuthTarget"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -607,7 +616,9 @@ export interface operations {
     };
     Create: {
         parameters: {
-            query?: never;
+            query?: {
+                target?: components["schemas"]["AccountAuthTarget"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -661,7 +672,9 @@ export interface operations {
     };
     Update: {
         parameters: {
-            query?: never;
+            query?: {
+                target?: components["schemas"]["AccountAuthTarget"];
+            };
             header?: never;
             path: {
                 id: number;

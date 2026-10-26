@@ -22,6 +22,15 @@ import { hashPassword } from "../utils/hashPassword";
 // 送り直す必要はなく、変えたい列だけを送ればよい
 // ─────────────────────────────────────────────────────────────
 
+// 操作対象のテーブル。通常アカウントとDIAG用アカウントは同じ構造の別テーブルで、
+// PHP側は引数ではなく別のサービスクラス（専用メソッド名の方針）で切り替える
+export type AccountAuthTarget = "normal" | "diag";
+
+const PHP_SERVICE: Record<AccountAuthTarget, string> = {
+  normal: "DbManagerTInetUserAuth",
+  diag: "DbManagerTInetUserAuthDiag",
+};
+
 // AccountAuth/AccountAuthInput/PhpRow/PhpInfoの4型で名前・型とも共通のフィールド
 // （id・accountName⇔username・non_sync・delfg・password以外の全部）をここに集約する
 type SharedFields = {
@@ -132,9 +141,11 @@ function toPhpInfo(
 }
 
 // 論理削除(delfg=1)も含めた全件（削除済み行は「状態」列で区別して表示する）
-export async function listAllAccountAuth(): Promise<AccountAuth[]> {
+export async function listAllAccountAuth(
+  target: AccountAuthTarget = "normal",
+): Promise<AccountAuth[]> {
   const rows = await callAmfphpService<PhpRow[]>(
-    "DbManagerTInetUserAuth",
+    PHP_SERVICE[target],
     "load",
     [],
   );
@@ -157,17 +168,19 @@ export function assertAccountAuthListLooksValid(list: AccountAuth[]): void {
 
 export async function createAccountAuth(
   records: AccountAuthInput[],
+  target: AccountAuthTarget = "normal",
 ): Promise<{ inserted: number }> {
   const data = records.map((r) =>
     toPhpInfo({ ...r, password: hashPassword(r.password) }, "INSERT"),
   );
-  await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
+  await callAmfphpService(PHP_SERVICE[target], "update", [data]);
   return { inserted: records.length };
 }
 
 export async function updateAccountAuth(
   id: number,
   input: AccountAuthInput,
+  target: AccountAuthTarget = "normal",
 ): Promise<AccountAuth | null> {
   // 部分更新なので事前に現在行を読む必要はない（idが存在しなければ単に
   // 0件更新で終わり、下のlistAllAccountAuth().find()がnullを返す）
@@ -179,9 +192,9 @@ export async function updateAccountAuth(
   else info.password = hashPassword(input.password);
 
   const data = [info];
-  await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
+  await callAmfphpService(PHP_SERVICE[target], "update", [data]);
 
-  const updated = await listAllAccountAuth();
+  const updated = await listAllAccountAuth(target);
   return updated.find((r) => r.id === id) ?? null;
 }
 

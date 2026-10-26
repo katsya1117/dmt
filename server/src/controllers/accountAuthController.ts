@@ -1,5 +1,5 @@
 // ※ DELETE を開放する時は import に `Delete` を、下記import に `deleteAccountAuth` を戻す
-import { Body, Controller, Get, Path, Post, Put, Route, SuccessResponse, Response, Tags } from 'tsoa'
+import { Body, Controller, Get, Path, Post, Put, Query, Route, SuccessResponse, Response, Tags } from 'tsoa'
 import {
   listAllAccountAuth,
   createAccountAuth,
@@ -8,6 +8,7 @@ import {
   // deleteAccountAuth, // ← DELETE未開放。開放時に戻す
   type AccountAuth,
   type AccountAuthInput,
+  type AccountAuthTarget,
 } from '../repositories/accountAuth'
 import { validateImportRecords, formatManualValidationMessage } from '../services/accountAuthDiff'
 
@@ -30,11 +31,12 @@ interface ErrorResponse {
 @Route('account-auth')
 @Tags('アカウント認証')
 export class AccountAuthController extends Controller {
-  /** 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する） */
+  /** 一覧取得。削除済み(delfg=1)も含めた全件（手動リストア用に「状態」列で区別する）。
+   *  target: normal=通常アカウント（既定）／diag=DIAG用アカウント（同じ構造の別テーブル） */
   @Get()
   @Response<ErrorResponse>(503, '既存データの取得に失敗')
-  public async list(): Promise<AccountAuth[] | ErrorResponse> {
-    const all = await listAllAccountAuth()
+  public async list(@Query() target: AccountAuthTarget = 'normal'): Promise<AccountAuth[] | ErrorResponse> {
+    const all = await listAllAccountAuth(target)
     try {
       assertAccountAuthListLooksValid(all)
     } catch (e: unknown) {
@@ -50,14 +52,23 @@ export class AccountAuthController extends Controller {
    *  (delfg=false)レコード同士」でのみ判定する（削除済みのaccountNameは再利用可、
    *  という客先の運用要望のため）。
    *  accountNameにDB UNIQUE制約は無い（客先の旧運用による重複が実在するため）
-   *  ので、重複拒否はこのアプリ層の検証が唯一の砦 */
+   *  ので、重複拒否はこのアプリ層の検証が唯一の砦。
+   *  DIAG用(target=diag)への新規追加は受け付けない（DIAGアカウントは廃止予定で、
+   *  既存行の維持・論理削除・復活だけを扱う） */
   @Post()
   @SuccessResponse(201, 'Created')
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(409, '予期しないDBエラー')
   @Response<ErrorResponse>(503, '既存データの取得に失敗（重複チェックが信用できないため中断）')
-  public async create(@Body() body: CreateAccountAuthBody): Promise<{ inserted: number } | ErrorResponse> {
-    const all = await listAllAccountAuth()
+  public async create(
+    @Body() body: CreateAccountAuthBody,
+    @Query() target: AccountAuthTarget = 'normal',
+  ): Promise<{ inserted: number } | ErrorResponse> {
+    if (target === 'diag') {
+      this.setStatus(400)
+      return { error: 'DIAG用アカウントへの新規追加はできません' }
+    }
+    const all = await listAllAccountAuth(target)
     try {
       assertAccountAuthListLooksValid(all)
     } catch (e: unknown) {
@@ -94,8 +105,12 @@ export class AccountAuthController extends Controller {
   @Response<ErrorResponse>(400, '検証エラー')
   @Response<ErrorResponse>(404, '対象が見つかりません')
   @Response<ErrorResponse>(503, '既存データの取得に失敗（重複チェックが信用できないため中断）')
-  public async update(@Path() id: number, @Body() input: AccountAuthInput): Promise<AccountAuth | ErrorResponse> {
-    const all = await listAllAccountAuth()
+  public async update(
+    @Path() id: number,
+    @Body() input: AccountAuthInput,
+    @Query() target: AccountAuthTarget = 'normal',
+  ): Promise<AccountAuth | ErrorResponse> {
+    const all = await listAllAccountAuth(target)
     try {
       assertAccountAuthListLooksValid(all)
     } catch (e: unknown) {
@@ -122,7 +137,7 @@ export class AccountAuthController extends Controller {
       }
     }
     try {
-      const updated = await updateAccountAuth(id, input)
+      const updated = await updateAccountAuth(id, input, target)
       if (!updated) {
         this.setStatus(404)
         return { error: '対象が見つかりません' }

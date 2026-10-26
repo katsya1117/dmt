@@ -10,12 +10,15 @@
 // │  - 一覧テーブルは MUI DataGrid（仮想化込み・大量行対応）        │
 // └─────────────────────────────────────────────────────────────┘
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import Tooltip from '@mui/material/Tooltip'
@@ -38,7 +41,7 @@ import { ImportValueNormalizeRulesDialog } from '../components/accountAuth/Impor
 import { FilterInline } from '../components/accountAuth/filterVariants/FilterInline'
 import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
-import type { AccountAuth, AccountAuthInput } from '../api/accountAuth'
+import type { AccountAuth, AccountAuthInput, AccountAuthTarget } from '../api/accountAuth'
 
 // テキスト列（診断対象外/状態/操作 は別途renderCellで描画）。
 // widthは最小幅として使い、flexも同じ比率で持たせることで、列合計が画面幅より
@@ -63,9 +66,21 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
 ]
 
 export default function AccountAuthTable() {
+  // 通常アカウントとDIAG用アカウントは同じ構造の別テーブルで、同じ画面部品で扱う。
+  // 切り替えはURLの ?target=diag に載せる（再読み込みしても保持され、リンクも共有できる）。
+  // DIAGアカウントは廃止予定のため、DIAG側は既存行の閲覧・編集・論理削除と復活だけを扱い、
+  // 新規追加とExcel取り込み（通常アカウント側の入口）は出さない
+  const [searchParams, setSearchParams] = useSearchParams()
+  const target: AccountAuthTarget = searchParams.get('target') === 'diag' ? 'diag' : 'normal'
+  const isDiag = target === 'diag'
+  const handleTargetChange = (_: unknown, next: AccountAuthTarget | null) => {
+    if (!next) return // 同じボタンの再クリックで選択が外れるのを防ぐ（必ずどちらかが選ばれている）
+    setSearchParams(next === 'diag' ? { target: 'diag' } : {}, { replace: true })
+  }
+
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
   // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
-  const { data, isLoading, error } = accountAuthApi.useAccountAuthListQuery()
+  const { data, isLoading, error } = accountAuthApi.useAccountAuthListQuery(target)
   const [create, { isLoading: creating }] = accountAuthApi.useCreateAccountAuthMutation()
   const [update, { isLoading: updating }] = accountAuthApi.useUpdateAccountAuthMutation()
   const [applyImportDiff, { isLoading: applying }] = accountAuthApi.useApplyAccountAuthImportDiffMutation()
@@ -209,7 +224,7 @@ export default function AccountAuthTable() {
       setConfirmState({
         message,
         onConfirm: () => {
-          const action = editTarget ? update({ id: editTarget.id, input }).unwrap() : create([input]).unwrap()
+          const action = editTarget ? update({ id: editTarget.id, input, target }).unwrap() : create([input]).unwrap()
           action.then(() => resolve()).catch((e) => reject(e))
         },
       })
@@ -301,40 +316,54 @@ export default function AccountAuthTable() {
         useFlexGap
         sx={{ mb: 2.5, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}
       >
-        <Typography variant="h1" sx={{ m: 0 }}>アカウント認証テーブル</Typography>
-        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 1 }}>
-          <Button
-            variant="outlined"
-            startIcon={<UploadFileIcon />}
-            loading={previewLoading}
-            loadingPosition="start"
-            onClick={() => previewFileRef.current?.click()}
+        <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 2 }}>
+          <Typography variant="h1" sx={{ m: 0 }}>アカウント認証テーブル</Typography>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={target}
+            onChange={handleTargetChange}
+            aria-label="対象アカウントの切り替え"
           >
-            {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
-          </Button>
-          <Tooltip title="除外リスト管理">
-            <IconButton
-              size="small"
-              aria-label="除外リスト管理"
-              onClick={() => setExcludeListDialogOpen(true)}
-              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
-            >
-              <PlaylistRemoveIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="比較前値置換ルール管理">
-            <IconButton
-              size="small"
-              aria-label="比較前値置換ルール管理"
-              onClick={() => setNormalizeRulesDialogOpen(true)}
-              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
-            >
-              <FindReplaceIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
-          <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
+            <ToggleButton value="normal">通常</ToggleButton>
+            <ToggleButton value="diag">DIAG</ToggleButton>
+          </ToggleButtonGroup>
         </Stack>
+        {!isDiag && (
+          <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<UploadFileIcon />}
+              loading={previewLoading}
+              loadingPosition="start"
+              onClick={() => previewFileRef.current?.click()}
+            >
+              {previewLoading ? '差分を計算中…' : 'Excel取り込み（差分プレビュー）'}
+            </Button>
+            <Tooltip title="除外リスト管理">
+              <IconButton
+                size="small"
+                aria-label="除外リスト管理"
+                onClick={() => setExcludeListDialogOpen(true)}
+                sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+              >
+                <PlaylistRemoveIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="比較前値置換ルール管理">
+              <IconButton
+                size="small"
+                aria-label="比較前値置換ルール管理"
+                onClick={() => setNormalizeRulesDialogOpen(true)}
+                sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+              >
+                <FindReplaceIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openAdd}>新規追加</Button>
+            <input ref={previewFileRef} type="file" accept=".xlsx,.xls" hidden onChange={handlePreviewFile} />
+          </Stack>
+        )}
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{(error as Error).message}</Alert>}

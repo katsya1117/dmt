@@ -38,13 +38,41 @@ const initialRows: AccountAuth[] = [
   },
 ]
 
+// DIAG用アカウント（?target=diag）。通常と同じ構造の別テーブルで、通常にもいる人と
+// DIAG用にしかいない人、論理削除済みの人を混ぜてある（サーバー側のモックPHPのシードと同じ内容）
+const initialDiagRows: AccountAuth[] = [
+  {
+    id: 1, accountName: 'dealer001', password: fakeHashPassword('pw-001'), comment: '通常にも登録あり', number: 1001,
+    submission_date: '2024-04-01', regist_date: '2024-04-05',
+    company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
+    non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
+  },
+  {
+    id: 2, accountName: 'diag-only01', password: fakeHashPassword('pw-d01'), comment: 'DIAGのみの契約', number: 2001,
+    submission_date: '2024-06-01', regist_date: '2024-06-03',
+    company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '02',
+    non_sync: false, store_cd: 'S010', store_name: '大阪南店', reg_date: ts, upd_date: ts, delfg: false,
+  },
+  {
+    id: 3, accountName: 'diag-old02', password: fakeHashPassword('pw-d02'), comment: null, number: 2002,
+    submission_date: '2023-02-01', regist_date: '2023-02-02',
+    company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '04',
+    non_sync: false, store_cd: 'S011', store_name: '神戸店', reg_date: ts, upd_date: ts, delfg: true,
+  },
+]
+
 let rows: AccountAuth[] = structuredClone(initialRows)
+let diagRows: AccountAuth[] = structuredClone(initialDiagRows)
 let nextId = 4
 
 export function resetAccountAuthMock() {
   rows = structuredClone(initialRows)
+  diagRows = structuredClone(initialDiagRows)
   nextId = 4
 }
+
+// ?target=diag ならDIAG用、それ以外は通常（サーバー側コントローラの既定と同じ）
+const isDiagRequest = (request: Request) => new URL(request.url).searchParams.get('target') === 'diag'
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ')
 
@@ -284,13 +312,17 @@ export const accountAuthHandlers = [
     return HttpResponse.json({ inserted, updated, deleted, restored })
   }),
 
-  http.get('/api/account-auth', async () => {
+  http.get('/api/account-auth', async ({ request }) => {
     await delay(150)
-    return HttpResponse.json(rows)
+    return HttpResponse.json(isDiagRequest(request) ? diagRows : rows)
   }),
 
   http.post('/api/account-auth', async ({ request }) => {
     await delay(150)
+    // DIAGアカウントは廃止予定のため新規追加は受け付けない（サーバー側と同じ）
+    if (isDiagRequest(request)) {
+      return HttpResponse.json({ error: 'DIAG用アカウントへの新規追加はできません' }, { status: 400 })
+    }
     const body = (await request.json()) as { records?: AccountAuthInput[] }
     const records = body.records ?? []
     if (records.length === 0) {
@@ -312,16 +344,18 @@ export const accountAuthHandlers = [
     await delay(150)
     const id = Number(params.id)
     const input = (await request.json()) as AccountAuthInput
-    const idx = rows.findIndex((x) => x.id === id)
+    // 通常とDIAG用は別の配列。以降は対象の配列(list)だけを見て同じ処理を流用する
+    const list = isDiagRequest(request) ? diagRows : rows
+    const idx = list.findIndex((x) => x.id === id)
     if (idx === -1) return HttpResponse.json({ error: '対象が見つかりません' }, { status: 404 })
-    const current = rows[idx]
+    const current = list[idx]
     // 空文字＝「パスワードを変更する」チェックOFF（クライアント側の規約）→既存ハッシュを維持
     const password = input.password.trim() === '' ? current.password : fakeHashPassword(input.password)
     // 更新後にdelfg=falseになる場合のみ、自分以外の生きているレコードとの重複を検証
     // （リストアも通常の編集も同じ扱い。検証は「実際に保存される値」で行う。
     // 詳細はサーバー側 accountAuthController.ts 参照）
     if (!input.delfg) {
-      const others = rows.filter((r) => r.id !== id)
+      const others = list.filter((r) => r.id !== id)
       const existingNumbers = new Set(others.map((r) => r.number).filter((n): n is number => n != null))
       const existingAccountNames = new Set(others.filter((r) => !r.delfg).map((r) => r.accountName))
       const errors = validateImportRecords([{ ...input, password }], existingNumbers, existingAccountNames)
@@ -329,8 +363,8 @@ export const accountAuthHandlers = [
         return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
       }
     }
-    rows[idx] = { ...rows[idx], ...input, password, id, upd_date: now() }
-    return HttpResponse.json(rows[idx])
+    list[idx] = { ...list[idx], ...input, password, id, upd_date: now() }
+    return HttpResponse.json(list[idx])
   }),
 
   http.delete('/api/account-auth/:id', async ({ params }) => {
