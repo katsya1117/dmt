@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../amfphp/Services/AuthSession.php';
+require_once __DIR__ . '/TInetUserAuthWriter.php';
 
 // docs/legacy-amfphp/webService/DbManagerTInetUserAuth.php のJSON契約
 // （load/updateの引数・戻り値の形）と、DBアクセスの仕方（DBConnectionクラス経由で
@@ -103,63 +104,9 @@ abstract class TInetUserAuthBase
         if (is_array($data)) {
             $now = date('Y-m-d H:i:s'); // このバッチ内の全レコードで同じ日時にする
             foreach ($data as $info) {
-                $updatemark = isset($info->updatemark) ? $info->updatemark : null;
-
-                if ($updatemark === 'INSERT') {
-                    // 本物と同じく、SQL文字列＋プレースホルダの値を$db->execute()に渡す形。
-                    // DBConnection側がprepare/bindValue/executeの面倒を見てくれる
-                    $ret = $db->execute(
-                        "insert into $table
-                            (username, password, comment, number, submission_date, regist_date,
-                             company_cd, company_name, store_cd, store_name,
-                             company_store_cd, company_store_branch_num, non_sync, delfg, reg_date, upd_date)
-                            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        array(
-                            $info->username, $info->password,
-                            isset($info->comment) ? $info->comment : null,
-                            isset($info->number) ? $info->number : null,
-                            isset($info->submission_date) ? $info->submission_date : null,
-                            isset($info->regist_date) ? $info->regist_date : null,
-                            isset($info->company_cd) ? $info->company_cd : null,
-                            isset($info->company_name) ? $info->company_name : null,
-                            isset($info->store_cd) ? $info->store_cd : null,
-                            isset($info->store_name) ? $info->store_name : null,
-                            isset($info->company_store_cd) ? $info->company_store_cd : null,
-                            isset($info->company_store_branch_num) ? $info->company_store_branch_num : null,
-                            !empty($info->non_sync) ? 1 : 0,
-                            !empty($info->delfg) ? 1 : 0,
-                            $now, $now, // reg_date, upd_date とも新規作成時刻
-                        )
-                    );
-                } elseif ($updatemark === 'UPDATE') {
-                    // 【本当の部分更新】このモックはDbManagerTInetUserAuth専用の新規実装で
-                    // あり旧FLEXアプリと共有していないため、「全カラム上書き固定」の作法を
-                    // 踏襲する制約は無い（DbManagerProperties.phpと同じ理由・同じ方式）。
-                    // $infoに含まれる列だけをSET句に組み込む（updatemark/idは除く）。
-                    // bool系(non_sync/delfg)だけ 1/0 に変換する
-                    $boolColumns = array('non_sync', 'delfg');
-                    $updatableColumns = array('username', 'password', 'comment', 'number', 'submission_date', 'regist_date', 'company_cd', 'company_name', 'store_cd', 'store_name', 'company_store_cd', 'company_store_branch_num', 'non_sync', 'delfg');
-                    $setParts = array('upd_date = ?'); // upd_dateだけ常に更新。reg_date（作成日時）はUPDATEでは変えない
-                    $values = array($now);
-                    foreach ($updatableColumns as $col) {
-                        // $info->$col は「変数$colの値をプロパティ名として使う」書き方
-                        if (property_exists($info, $col)) {
-                            $setParts[] = "$col = ?";
-                            $values[] = in_array($col, $boolColumns) ? (!empty($info->$col) ? 1 : 0) : $info->$col;
-                        }
-                    }
-                    $values[] = $info->id;
-
-                    $ret = $db->execute(
-                        "update $table set " . implode(', ', $setParts) . " where id = ?",
-                        $values
-                    );
-                } else {
-                    // 物理DELETEは意図的にサポートしない（DbManagerProperties.phpと同じ方針。
-                    // account_authは客先DBで物理削除が不調のため、論理削除(delfg=1)のみ扱う。
-                    // updatemarkがINSERT/UPDATE以外の場合は何もせず次のレコードへ進む）
-                    continue;
-                }
+                $written = TInetUserAuthWriter::write($db, $table, $info, $now);
+                if ($written['skipped']) continue;
+                $ret = $written['ok'];
 
                 if (!$ret) {
                     // DBConnection::execute()は失敗時に$this->statusと同じ値(false)を返す。

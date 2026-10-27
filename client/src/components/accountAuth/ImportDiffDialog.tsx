@@ -21,7 +21,7 @@ import {
   type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
-import type { ImportDiff } from "../../api/accountAuthImport";
+import type { EntitlementChange, ImportDiff } from "../../api/accountAuthImport";
 import { AUTH_CRITICAL_FIELDS } from "../../api/accountAuthImport";
 import type { AccountAuthInput } from "../../api/accountAuth";
 import { OverflowTooltipCell } from "../dataGrid/OverflowTooltipCell";
@@ -40,14 +40,26 @@ type Props = {
   applying: boolean;
 };
 
-type Kind = "追加" | "変更" | "削除" | "リストア";
+// 「権限・DIAG」は、通常アカウント自体には変更が無く、権限またはDIAG用アカウントの
+// 状態だけが変わる行
+type Kind = "追加" | "変更" | "削除" | "リストア" | "権限・DIAG";
 
-const KIND_COLOR: Record<Kind, "success" | "info" | "error" | "warning"> = {
+const KIND_COLOR: Record<Kind, "success" | "info" | "error" | "warning" | "default"> = {
   追加: "success",
   変更: "info",
   削除: "error",
   リストア: "warning",
+  "権限・DIAG": "default",
 };
+
+// 権限は三者択一（なし／ALL_MANUAL／HTML_BROWSING）なので1列で before → after を出す
+const authorityLabel = (a: string | null) => a ?? "なし";
+const DIAG_LABEL: Record<string, string> = {
+  alive: "有効",
+  deleted: "削除済み",
+  none: "なし",
+};
+const arrow = (before: string, after: string) => `${before} → ${after}`;
 
 // 一覧テーブルと揃えたカラム定義（id/reg_date/upd_dateは取り込み対象外のため除く）。
 // delfgは「状態」列として出す。区分チップ（追加/変更/削除/リストア）はDBとの
@@ -90,6 +102,8 @@ type Row = {
   record: AccountAuthInput;
   changedFields: string[];
   line: number;
+  // 権限・DIAG用アカウントの変化（無ければundefined）
+  entitlement?: EntitlementChange;
 };
 
 export function ImportDiffDialog({
@@ -107,9 +121,13 @@ export function ImportDiffDialog({
     diff.added.length +
       diff.changed.length +
       diff.deleted.length +
-      diff.restored.length >
+      diff.restored.length +
+      diff.entitlementChanges.length >
       0;
   const hasValidationErrors = !!diff?.validationErrors.length;
+  // 行単位のエラー（電子マニュアル／多機能版HTML／DIAG列の値の不正など）。検証エラーと
+  // 違って適用全体は止めず、該当の行だけが差分に含まれない（一切更新されない）
+  const rowErrors = diff?.rowErrors ?? [];
 
   // 列固定（ピン留め）はMUI X DataGrid Pro限定機能のため使えない。代わりに
   // 列表示設定ボタン（アイコンのみ）から列パネルを開閉する。
@@ -144,6 +162,9 @@ export function ImportDiffDialog({
   // （ハイライト判定は別途lineで行っているため、ハイライトだけは正しく付くのに
   // 表示内容だけズレるという分かりにくい壊れ方になる）。lineはファイル内の
   // 全レコードで一意な通し番号なので、代わりにこちらをidに使う
+  const entitlementByLine = new Map(
+    (diff?.entitlementChanges ?? []).map((e) => [e.line, e]),
+  );
   const rows: Row[] = diff
     ? [
         // 【DBに無い行がdelfg=trueで来るケース】理論上、初回のExcel取り込み時にだけ
@@ -161,6 +182,7 @@ export function ImportDiffDialog({
             },
             changedFields: [],
             line: r.line,
+            entitlement: entitlementByLine.get(r.line),
           }),
         ),
         ...diff.changed.map(
@@ -174,6 +196,7 @@ export function ImportDiffDialog({
             },
             changedFields: c.changedFields,
             line: c.line,
+            entitlement: entitlementByLine.get(c.line),
           }),
         ),
         ...diff.deleted.map(
@@ -187,6 +210,7 @@ export function ImportDiffDialog({
             },
             changedFields: [],
             line: d.line,
+            entitlement: entitlementByLine.get(d.line),
           }),
         ),
         ...diff.restored.map(
@@ -200,8 +224,43 @@ export function ImportDiffDialog({
             },
             changedFields: [],
             line: r.line,
+            entitlement: entitlementByLine.get(r.line),
           }),
         ),
+        // 通常アカウントに変更が無く、権限・DIAG用アカウントだけが変わる行
+        ...diff.entitlementChanges
+          .filter(
+            (e) =>
+              ![...diff.added, ...diff.changed, ...diff.deleted, ...diff.restored].some(
+                (x) => x.line === e.line,
+              ),
+          )
+          .map(
+            (e): Row => ({
+              id: `line-${e.line}`,
+              kind: "権限・DIAG",
+              accountName: e.accountName,
+              record: {
+                accountName: e.accountName,
+                password: "",
+                comment: null,
+                number: e.number,
+                submission_date: null,
+                regist_date: null,
+                company_cd: null,
+                company_name: null,
+                company_store_cd: null,
+                company_store_branch_num: null,
+                non_sync: false,
+                store_cd: null,
+                store_name: null,
+                delfg: false,
+              },
+              changedFields: [],
+              line: e.line,
+              entitlement: e,
+            }),
+          ),
       ]
     : [];
 
@@ -348,6 +407,50 @@ export function ImportDiffDialog({
         },
       };
     }),
+    // 権限（三者択一）とDIAG用アカウントの状態の変化。変化が無い行は空欄にする。
+    // 通常アカウントのコメント列より前に置くと横幅を食うため末尾に置く
+    {
+      field: "authority",
+      headerName: "権限",
+      width: 220,
+      sortable: false,
+      renderCell: (params) => {
+        const a = params.row.entitlement?.authority;
+        if (!a) return null;
+        const text = arrow(authorityLabel(a.before), authorityLabel(a.after));
+        return (
+          <OverflowTooltipCell
+            value={text}
+            content={
+              <Box component="span" sx={{ fontWeight: 700, color: "info.main" }}>
+                {text}
+              </Box>
+            }
+          />
+        );
+      },
+    },
+    {
+      field: "diagAccount",
+      headerName: "DIAG用",
+      width: 170,
+      sortable: false,
+      renderCell: (params) => {
+        const d = params.row.entitlement?.diag;
+        if (!d) return null;
+        const text = arrow(DIAG_LABEL[d.before], DIAG_LABEL[d.after]);
+        return (
+          <OverflowTooltipCell
+            value={text}
+            content={
+              <Box component="span" sx={{ fontWeight: 700, color: "info.main" }}>
+                {text}
+              </Box>
+            }
+          />
+        );
+      },
+    },
   ];
 
   return (
@@ -470,6 +573,17 @@ export function ImportDiffDialog({
         >
           {rows.length} 件
         </Typography>
+        {rowErrors.length > 0 && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            エラーのある行は適用対象から外れ、通常・DIAG用・権限のどれも更新されません（
+            {rowErrors.length}件）。Excelを直して再度取り込んでください:
+            <Box component="ul" sx={{ m: 0, pl: 3 }}>
+              {rowErrors.map((e) => (
+                <li key={`${e.line}-${e.message}`}>{e.message}</li>
+              ))}
+            </Box>
+          </Alert>
+        )}
         {hasValidationErrors && (
           <Alert severity="error" sx={{ mt: 1 }}>
             検証エラーがあります。この内容のままでは適用できません（

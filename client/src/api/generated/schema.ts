@@ -272,6 +272,29 @@ export interface components {
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
+        /** @enum {string} */
+        Authority: "ALL_MANUAL" | "HTML_BROWSING";
+        /** @enum {string} */
+        DiagState: "alive" | "deleted" | "none";
+        EntitlementChange: {
+            /** Format: double */
+            line: number;
+            /** Format: double */
+            number: number | null;
+            accountName: string;
+            /** Format: double */
+            accountId: number | null;
+            authority: {
+                after: components["schemas"]["Authority"] | null;
+                before: components["schemas"]["Authority"] | null;
+            } | null;
+            diag: {
+                after: components["schemas"]["DiagState"];
+                before: components["schemas"]["DiagState"];
+                /** Format: double */
+                id: number;
+            } | null;
+        };
         ValidationError: {
             /** Format: double */
             line: number;
@@ -286,6 +309,8 @@ export interface components {
             restored: components["schemas"]["RestoredRow"][];
             /** Format: double */
             unchangedCount: number;
+            entitlementChanges: components["schemas"]["EntitlementChange"][];
+            rowErrors: components["schemas"]["ValidationError"][];
             validationErrors: components["schemas"]["ValidationError"][];
         };
         ImportErrorResponse: {
@@ -301,6 +326,10 @@ export interface components {
             deleted: number;
             /** Format: double */
             restored: number;
+            /** Format: double */
+            authoritySynced: number;
+            /** Format: double */
+            diagWritten: number;
         };
         ErrorResponse: {
             error: string;
@@ -523,6 +552,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImportDiff"] | components["schemas"]["ImportErrorResponse"];
+                };
+            };
+            /** @description Excelに必要な列がない */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportErrorResponse"];
                 };
             };
             /** @description 既存データの取得に失敗（差分計算が信用できないため中断） */

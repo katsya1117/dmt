@@ -1,18 +1,31 @@
 import { Controller, FormField, Post, Response, Route, Tags, UploadedFile } from 'tsoa'
 import {
   listAllAccountAuth,
+  listManagedAuthorities,
   applyAccountAuthImport,
   assertAccountAuthListLooksValid,
   type ApplyImportResult,
 } from '../repositories/accountAuth'
-import { computeImportDiff, redactImportDiffPasswords, validateImportRecords, applyValueNormalizeRules, findNewLiveAccountNameDuplicates, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
-import { parseAccountAuthExcelBuffer } from '../services/parseAccountAuthExcel'
+import { computeImportDiff, redactImportDiffPasswords, validateImportRecords, applyValueNormalizeRules, findNewLiveAccountNameDuplicates, type EntitlementContext, type ImportDiff, type ValidationError } from '../services/accountAuthDiff'
+import { parseAccountAuthExcelWithMarks } from '../services/parseAccountAuthExcel'
 import { listImportValueNormalizeRules } from '../repositories/importValueNormalizeRules'
 
 interface ImportErrorResponse {
   error: string
   errors?: ValidationError[]
 }
+
+// 権限・DIAG用アカウントの現状（差分計算の入力）。DIAG用は0件でも正常（廃止予定）
+async function loadEntitlementContext(marks: EntitlementContext['marks']): Promise<EntitlementContext> {
+  const [currentDiag, currentAuthorities] = await Promise.all([
+    listAllAccountAuth('diag'),
+    listManagedAuthorities(),
+  ])
+  return { marks, currentDiag, currentAuthorities }
+}
+
+const missingColumnsMessage = (cols: string[]) =>
+  `Excelに必要な列がありません: ${cols.join('、')}（電子マニュアル・多機能版HTML・DIAGの3列が必要です）`
 
 // ┌─────────────────────────────────────────────────────────────┐
 // │ アカウント認証 Excel取り込み（差分レビュー方式）              │
@@ -29,19 +42,26 @@ export class AccountAuthImportController extends Controller {
   /** 差分プレビュー（書き込みなし）。ファイルにある行だけ判定する。
    *  検証エラーがあっても差分自体は返す（applyで拒否されることを事前に知らせるため） */
   @Post('preview')
+  @Response<ImportErrorResponse>(400, 'Excelに必要な列がない')
   @Response<ImportErrorResponse>(503, '既存データの取得に失敗（差分計算が信用できないため中断）')
   public async preview(@UploadedFile() file: Express.Multer.File): Promise<ImportDiff | ImportErrorResponse> {
-    const rawRecords = await parseAccountAuthExcelBuffer(file.buffer)
+    const parsed = await parseAccountAuthExcelWithMarks(file.buffer)
+    if (parsed.missingColumns.length > 0) {
+      this.setStatus(400)
+      return { error: missingColumnsMessage(parsed.missingColumns) }
+    }
     const normalizeRules = await listImportValueNormalizeRules()
-    const records = applyValueNormalizeRules(rawRecords, normalizeRules)
+    const records = applyValueNormalizeRules(parsed.records, normalizeRules)
     const current = await listAllAccountAuth() // delfg=1含む全件（リストア判定のため）
+    let ctx: EntitlementContext
     try {
       assertAccountAuthListLooksValid(current)
+      ctx = await loadEntitlementContext(parsed.marks)
     } catch (e: unknown) {
       this.setStatus(503)
       return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
     }
-    const diff = computeImportDiff(records, current)
+    const diff = computeImportDiff(records, current, ctx)
     diff.validationErrors = validateImportRecords(records, undefined, undefined, current)
     return redactImportDiffPasswords(diff)
   }
@@ -61,12 +81,18 @@ export class AccountAuthImportController extends Controller {
     @FormField() commentOverrides?: string,
     @FormField() applyLines?: string
   ): Promise<ApplyImportResult | ImportErrorResponse> {
-    const rawRecords = await parseAccountAuthExcelBuffer(file.buffer)
+    const parsed = await parseAccountAuthExcelWithMarks(file.buffer)
+    if (parsed.missingColumns.length > 0) {
+      this.setStatus(400)
+      return { error: missingColumnsMessage(parsed.missingColumns) }
+    }
     const normalizeRules = await listImportValueNormalizeRules()
-    const records = applyValueNormalizeRules(rawRecords, normalizeRules)
+    const records = applyValueNormalizeRules(parsed.records, normalizeRules)
     const current = await listAllAccountAuth()
+    let ctx: EntitlementContext
     try {
       assertAccountAuthListLooksValid(current)
+      ctx = await loadEntitlementContext(parsed.marks)
     } catch (e: unknown) {
       this.setStatus(503)
       return { error: e instanceof Error ? e.message : '既存データの取得に失敗しました' }
@@ -76,7 +102,8 @@ export class AccountAuthImportController extends Controller {
       this.setStatus(400)
       return { error: '検証エラーがあります', errors }
     }
-    const diff = computeImportDiff(records, current)
+    // rowErrors（3列の値の不正など）の行は、差分に含まれない＝一切更新されない
+    const diff = computeImportDiff(records, current, ctx)
 
     // 差分プレビュー画面で選択された行だけに絞り込む。未指定時は後方互換で全件適用
     if (applyLines !== undefined) {
@@ -85,6 +112,7 @@ export class AccountAuthImportController extends Controller {
       diff.changed = diff.changed.filter((c) => allow.has(c.line))
       diff.deleted = diff.deleted.filter((d) => allow.has(d.line))
       diff.restored = diff.restored.filter((r) => allow.has(r.line))
+      diff.entitlementChanges = diff.entitlementChanges.filter((e) => allow.has(e.line))
     }
 
     const overrides: Record<number, string> = commentOverrides ? JSON.parse(commentOverrides) : {}
@@ -107,11 +135,22 @@ export class AccountAuthImportController extends Controller {
       }
     }
 
+    // 権限とDIAG用アカウントの変化。行（line）単位で、通常アカウントの変更と一緒に適用される
+    const entitlementByLine = new Map(diff.entitlementChanges.map((e) => [e.line, e]))
     const applyParams = {
       added: diff.added.map((a) => a.record),
       changed: diff.changed.map((c) => ({ id: c.before.id, after: c.after })),
       deleted: diff.deleted.map((d) => ({ id: d.before.id, comment: d.after.comment ?? '' })),
       restored: diff.restored.map((r) => ({ id: r.before.id, comment: r.after.comment ?? '' })),
+      entitlement: {
+        addedAuthorities: diff.added.map((a) => entitlementByLine.get(a.line)?.authority?.after ?? null),
+        authorityById: diff.entitlementChanges.flatMap((e) =>
+          e.accountId !== null && e.authority ? [{ id: e.accountId, authority: e.authority.after }] : [],
+        ),
+        diag: diff.entitlementChanges.flatMap((e) =>
+          e.diag ? [{ id: e.diag.id, delfg: e.diag.after === 'deleted' }] : [],
+        ),
+      },
     }
 
     // 最終ガード：選択されたチェックボックスの組み合わせを実際に適用した結果、

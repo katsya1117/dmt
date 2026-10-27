@@ -1,6 +1,12 @@
 import * as XLSX from 'xlsx'
 import type { AccountAuthInput } from '../repositories/accountAuth'
 import knownNumbers from '../data/accountAuthExcelKnownNumbers.json'
+import {
+  normalizeMark,
+  ENTITLEMENT_COLUMN_LABELS,
+  type EntitlementColumn,
+  type EntitlementMarks,
+} from './accountAuthEntitlement'
 
 // ─────────────────────────────────────────────────────────────
 // Excel取り込みのパース（サーバー側）。
@@ -42,6 +48,18 @@ const HEADER_MAP: Record<string, keyof AccountAuthInput> = {
 // 削除フラグ列の有無に関わらず delfg=true とする
 const CANCEL_DATE_HEADERS = ['解約日', 'cancel_date', 'cancellation_date']
 
+// 権限・DIAG用アカウントの判定に使う3列（○・×・入力なし）。account_authのDB列ではない。
+// 取り込むExcelのフォーマットは客先と固定で握っているため、3列のどれかが無ければ
+// 勝手に補わずエラーにする（フォーマットが変わったら気づきたい。2026-10-26）。
+// 見出しはNFKC正規化・前後空白除去・大文字化して照合する
+// 【要確認】DIAG列の実際の見出し表記は客先ファイルで未確認
+const ENTITLEMENT_HEADERS: Record<EntitlementColumn, string[]> = {
+  manual: ['電子マニュアル'],
+  html: ['多機能版HTML'],
+  diag: ['DIAG'],
+}
+const headerKey = (h: string) => h.normalize('NFKC').trim().toUpperCase()
+
 // ─────────────────────────────────────────────────────────────
 // 客先の台帳には、No.を欠番にした行を「←欠番」のような注記付きの結合セルで
 // 表現している箇所がある。結合セルの値は左上端のセルにのみ入っており、
@@ -82,26 +100,49 @@ function toBool(v: unknown): boolean {
   return ['1', 'true', 'TRUE', '対象外', '○', 'yes', 'Y'].includes(s)
 }
 
+export interface ParsedAccountAuthExcel {
+  records: AccountAuthInput[]
+  // recordsと同じ並び・同じ長さ（marks[i]がrecords[i]の3列の値）
+  marks: EntitlementMarks[]
+  // Excelに見つからなかった3列の列名（1つでもあれば取り込み不可）
+  missingColumns: string[]
+}
+
 /** アップロードされたxlsx/xlsバッファをパースし、AccountAuthInput[] に変換する */
 export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<AccountAuthInput[]> {
+  return (await parseAccountAuthExcelWithMarks(buffer)).records
+}
+
+/** 上記に加えて、電子マニュアル／多機能版HTML／DIAGの3列の値と、見つからなかった列を返す */
+export async function parseAccountAuthExcelWithMarks(buffer: Buffer): Promise<ParsedAccountAuthExcel> {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true })
   const sheetName = wb.SheetNames[0]
   const ws = sheetName ? wb.Sheets[sheetName] : undefined
-  if (!ws || !ws['!ref']) return []
+  if (!ws || !ws['!ref']) {
+    return { records: [], marks: [], missingColumns: Object.values(ENTITLEMENT_COLUMN_LABELS) }
+  }
 
   const range = XLSX.utils.decode_range(ws['!ref'])
   const cellValue = (r: number, c: number): unknown => ws[XLSX.utils.encode_cell({ r, c })]?.v
 
   const colToField: Record<number, keyof AccountAuthInput> = {}
   let cancelDateCol: number | null = null
+  const entitlementCols: Partial<Record<EntitlementColumn, number>> = {}
   for (let c = range.s.c; c <= range.e.c; c++) {
     const header = cellToString(cellValue(range.s.r, c)).trim()
     const field = HEADER_MAP[header]
     if (field) colToField[c] = field
     if (CANCEL_DATE_HEADERS.includes(header)) cancelDateCol = c
+    for (const col of Object.keys(ENTITLEMENT_HEADERS) as EntitlementColumn[]) {
+      if (ENTITLEMENT_HEADERS[col].some((h) => headerKey(h) === headerKey(header))) entitlementCols[col] = c
+    }
   }
+  const missingColumns = (Object.keys(ENTITLEMENT_HEADERS) as EntitlementColumn[])
+    .filter((col) => entitlementCols[col] === undefined)
+    .map((col) => ENTITLEMENT_COLUMN_LABELS[col])
 
   const records: AccountAuthInput[] = []
+  const marks: EntitlementMarks[] = []
   for (let r = range.s.r + 1; r <= range.e.r; r++) {
     const raw: Partial<Record<keyof AccountAuthInput, unknown>> = {}
     for (const [colStr, field] of Object.entries(colToField)) {
@@ -130,8 +171,16 @@ export async function parseAccountAuthExcelBuffer(buffer: Buffer): Promise<Accou
       delfg: toBool(raw.delfg) || hasCancelDate,
     }
     const isKessaban = record.number != null && KESSABAN_NUMBERS.includes(record.number)
-    if ((record.accountName || record.password) && !isKessaban) records.push(record) // 空行・欠番注記行を除外
+    if ((record.accountName || record.password) && !isKessaban) {
+      // 空行・欠番注記行を除外
+      records.push(record)
+      const markOf = (col: EntitlementColumn) => {
+        const c = entitlementCols[col]
+        return normalizeMark(c === undefined ? '' : cellToString(cellValue(r, c)))
+      }
+      marks.push({ manual: markOf('manual'), html: markOf('html'), diag: markOf('diag') })
+    }
   }
 
-  return records
+  return { records, marks, missingColumns }
 }

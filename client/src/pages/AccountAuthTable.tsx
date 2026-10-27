@@ -187,7 +187,7 @@ export default function AccountAuthTable() {
         setDiffOpen(false)
         setDiff(null)
         setPendingFile(null)
-        setToast({ msg: `適用しました（追加${r.inserted}・変更${r.updated}・削除${r.deleted}・リストア${r.restored}）`, severity: 'success' })
+        setToast({ msg: `適用しました（追加${r.inserted}・変更${r.updated}・削除${r.deleted}・リストア${r.restored}・権限${r.authoritySynced}・DIAG用${r.diagWritten}）`, severity: 'success' })
       })
       .catch((err) => setToast({ msg: (err as Error).message ?? '適用に失敗しました', severity: 'error' }))
   }

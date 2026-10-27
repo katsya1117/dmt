@@ -249,7 +249,13 @@ export const accountAuthHandlers = [
       } else unchangedCount++
     })
     const validationErrors = validateImportRecords(records)
-    return HttpResponse.json({ added, changed, deleted, restored, unchangedCount, validationErrors })
+    // 権限・DIAG用アカウント・3列のエラー行（entitlementChanges/rowErrors）は、サーバー側の
+    // 判定ルール（server/src/services/accountAuthEntitlement.ts）をこのモックでは再現せず
+    // 常に空で返す。それらの見た目はImportDiffDialog.storiesが差分を直接渡して確認する
+    return HttpResponse.json({
+      added, changed, deleted, restored, unchangedCount,
+      entitlementChanges: [], rowErrors: [], validationErrors,
+    })
   }),
 
   // 適用（承認後）。preview と同じ突合ロジックで反映する
@@ -309,7 +315,7 @@ export const accountAuthHandlers = [
         updated++
       }
     })
-    return HttpResponse.json({ inserted, updated, deleted, restored })
+    return HttpResponse.json({ inserted, updated, deleted, restored, authoritySynced: 0, diagWritten: 0 })
   }),
 
   http.get('/api/account-auth', async ({ request }) => {

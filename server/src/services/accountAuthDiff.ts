@@ -1,7 +1,13 @@
 import type {
   AccountAuth,
   AccountAuthInput,
+  Authority,
 } from "../repositories/accountAuth";
+import {
+  deriveDesiredState,
+  invalidTransitionIssue,
+  type EntitlementMarks,
+} from "./accountAuthEntitlement";
 
 // ─────────────────────────────────────────────────────────────
 // Excel取り込みの差分計算（純粋関数・書き込みなし）。
@@ -44,12 +50,45 @@ export interface ValidationError {
   message: string;
 }
 
+// DIAG用アカウントの状態。none＝DIAG用テーブルに該当行が無い
+export type DiagState = "alive" | "deleted" | "none";
+
+// 通常アカウント自体の追加／変更／削除／リストアとは別に生じる、権限とDIAG用アカウントの変化。
+// 通常アカウントに変更が無く、これだけが変わる行もある（その場合は added/changed/
+// deleted/restored に同じlineが無い）。lineで通常アカウントの行と結びつける
+export interface EntitlementChange {
+  line: number;
+  number: number | null;
+  accountName: string;
+  // 権限を同期する既存の通常アカウントのid（追加行は未採番のためnull）
+  accountId: number | null;
+  // 権限の変化（変更なしならnull）。権限は三者択一（null＝なし）
+  authority: { before: Authority | null; after: Authority | null } | null;
+  // DIAG用アカウントの論理削除・復活（変更なしならnull）。新規追加はしない
+  diag: { id: number; before: DiagState; after: DiagState } | null;
+}
+
+// 権限・DIAG用の判定に使う追加の入力。省略時は従来どおり通常アカウントだけを比較する
+export interface EntitlementContext {
+  // recordsと同じ並び・同じ長さ
+  marks: EntitlementMarks[];
+  // DIAG用アカウントの全件（delfg=1含む）
+  currentDiag: AccountAuth[];
+  // 通常アカウントのid → 今有効な管理対象の権限（なし＝null）
+  currentAuthorities: ReadonlyMap<number, Authority | null>;
+}
+
 export interface ImportDiff {
   added: AddedRow[];
   changed: ChangedRow[];
   deleted: DeletedRow[];
   restored: RestoredRow[];
   unchangedCount: number;
+  entitlementChanges: EntitlementChange[];
+  // 3列の値の不正など、行単位のエラー。validationErrors（1件でもあれば適用全体を拒否）
+  // と違い、その行だけを適用対象から外す（通常・DIAG用・権限のどれも一切更新しない。
+  // 該当lineは added/changed/deleted/restored/entitlementChanges からも除かれている）
+  rowErrors: ValidationError[];
   // ファイル内重複などの検証エラー（validateImportRecordsと同じ内容）。
   // プレビュー時点で気づけるように、差分計算自体は止めずここに載せて返す。
   // lineを持たせているのは、プレビュー画面で該当行をハイライトするため
@@ -180,12 +219,22 @@ function appendComment(existing: string | null, addition: string): string {
 export function computeImportDiff(
   records: AccountAuthInput[],
   current: AccountAuth[],
+  ctx?: EntitlementContext,
 ): ImportDiff {
   const byAccountName = new Map<string, AccountAuth>();
   const byNumber = new Map<number, AccountAuth>();
   for (const c of current) {
     byAccountName.set(c.accountName, c);
     if (c.number != null) byNumber.set(c.number, c);
+  }
+  const diagByAccountName = new Map<string, AccountAuth>();
+  const diagByNumber = new Map<number, AccountAuth>();
+  for (const c of ctx?.currentDiag ?? []) {
+    diagByAccountName.set(c.accountName, c);
+    if (c.number != null) diagByNumber.set(c.number, c);
+  }
+  if (ctx && ctx.marks.length !== records.length) {
+    throw new Error("marks と records の件数が一致しません");
   }
 
   const diff: ImportDiff = {
@@ -194,6 +243,8 @@ export function computeImportDiff(
     deleted: [],
     restored: [],
     unchangedCount: 0,
+    entitlementChanges: [],
+    rowErrors: [],
     validationErrors: [],
   };
 
@@ -212,14 +263,43 @@ export function computeImportDiff(
         ? (byNumber.get(r.number) ?? byAccountName.get(r.accountName))
         : byAccountName.get(r.accountName);
 
-    if (!cur) {
+    // 電子マニュアル／多機能版HTML／DIAGの3列から「あるべき状態」を導く。
+    // 値の不正や無効な変更は行ごとエラーにして、その行は一切更新しない
+    const ent = ctx ? deriveDesiredState(ctx.marks[i], r.delfg) : null;
+    if (ent) {
+      // 3列の値そのものの問題があればそれを先に出す（同じ行に重ねて無効な変更の
+      // メッセージまで出すと、同じ原因で2件のエラーになり読みづらいため）
+      const transition =
+        ent.issues.length === 0
+          ? invalidTransitionIssue(!!cur && !cur.delfg, ent.desired, r.delfg)
+          : null;
+      const issues = transition ? [transition] : [...ent.issues];
+      if (issues.length > 0) {
+        for (const message of issues) {
+          diff.rowErrors.push({
+            line,
+            number: r.number,
+            message: `${r.number != null ? `No.${r.number}` : "No.未設定の行"}：${message}`,
+          });
+        }
+        return;
+      }
+    }
+
+    // 通常アカウントを登録しない状態（電マ×・多機能版HTMLなし。DIAGのみのユーザー）では
+    // 通常アカウントを追加・変更・リストアのどれにもしない（解約日ありの削除は別扱い）
+    const skipNormal = !!ent && !ent.desired.normalAlive && !r.delfg;
+
+    // 通常アカウント自体の追加／変更／削除／リストア
+    let normalChanged = true;
+    if (skipNormal) {
+      normalChanged = false;
+    } else if (!cur) {
       // 新規追加はExcelのcomment列を使わず常に空で始める（備考は運用担当者が
       // アプリ上で手動で書くもので、Excel由来の値を持ち込まない）
       diff.added.push({ line, record: { ...r, comment: null } });
-      return;
-    }
-    // 削除／リストアは delfg の遷移で判定。備考に「yyyy/mm/dd 削除」「yyyy/mm/dd 再登録」を自動追記する
-    if (r.delfg && !cur.delfg) {
+    } else if (r.delfg && !cur.delfg) {
+      // 削除／リストアは delfg の遷移で判定。備考に「yyyy/mm/dd 削除」「yyyy/mm/dd 再登録」を自動追記する
       diff.deleted.push({
         line,
         accountName: r.accountName,
@@ -229,9 +309,7 @@ export function computeImportDiff(
           comment: appendComment(cur.comment, `${todayStr()} 削除`),
         },
       });
-      return;
-    }
-    if (!r.delfg && cur.delfg) {
+    } else if (!r.delfg && cur.delfg) {
       diff.restored.push({
         line,
         accountName: r.accountName,
@@ -241,30 +319,69 @@ export function computeImportDiff(
           comment: appendComment(cur.comment, `${todayStr()} 再登録`),
         },
       });
-      return;
-    }
-    // passwordはINPUT_FIELDSから除外済み。管理簿には初期パスワードしか載らずDBとの差異が常態なので比較対象外
-    const changedFields = INPUT_FIELDS.filter((f) => {
-      return r[f] !== cur[f];
-    });
-    if (changedFields.length > 0) {
-      const changeText = buildChangeComment(changedFields, cur, r);
-      const after: AccountAuthInput = {
-        ...r,
-        comment: changeText
-          ? appendComment(cur.comment, changeText)
-          : cur.comment,
-      };
-      diff.changed.push({
-        line,
-        accountName: r.accountName,
-        before: cur,
-        after,
-        changedFields,
-      });
     } else {
-      diff.unchangedCount++;
+      // passwordはINPUT_FIELDSから除外済み。管理簿には初期パスワードしか載らずDBとの差異が常態なので比較対象外
+      const changedFields = INPUT_FIELDS.filter((f) => {
+        return r[f] !== cur[f];
+      });
+      if (changedFields.length > 0) {
+        const changeText = buildChangeComment(changedFields, cur, r);
+        const after: AccountAuthInput = {
+          ...r,
+          comment: changeText
+            ? appendComment(cur.comment, changeText)
+            : cur.comment,
+        };
+        diff.changed.push({
+          line,
+          accountName: r.accountName,
+          before: cur,
+          after,
+          changedFields,
+        });
+      } else {
+        normalChanged = false;
+      }
     }
+
+    // 権限とDIAG用アカウントの変化
+    let entitlementChanged = false;
+    if (ent && ctx) {
+      const beforeAuthority = cur ? (ctx.currentAuthorities.get(cur.id) ?? null) : null;
+      const afterAuthority = ent.desired.authority;
+      const authority =
+        beforeAuthority !== afterAuthority
+          ? { before: beforeAuthority, after: afterAuthority }
+          : null;
+
+      // DIAG用は既存行の論理削除・復活だけ（DIAG○なのに行が無くても新規追加しない）
+      const curDiag =
+        r.number != null
+          ? (diagByNumber.get(r.number) ?? diagByAccountName.get(r.accountName))
+          : diagByAccountName.get(r.accountName);
+      let diag: EntitlementChange["diag"] = null;
+      if (curDiag) {
+        if (ent.desired.diagAlive && curDiag.delfg) {
+          diag = { id: curDiag.id, before: "deleted", after: "alive" };
+        } else if (!ent.desired.diagAlive && !curDiag.delfg) {
+          diag = { id: curDiag.id, before: "alive", after: "deleted" };
+        }
+      }
+
+      if (authority || diag) {
+        entitlementChanged = true;
+        diff.entitlementChanges.push({
+          line,
+          number: r.number,
+          accountName: r.accountName,
+          accountId: cur?.id ?? null,
+          authority,
+          diag,
+        });
+      }
+    }
+
+    if (!normalChanged && !entitlementChanged) diff.unchangedCount++;
   });
 
   return diff;

@@ -8,7 +8,8 @@
     "verify:amfphp": "tsx --env-file-if-exists=.env src/scripts/verifyAmfphpClient.ts",
     "verify:apply-import": "tsx --env-file-if-exists=.env src/scripts/verifyApplyImport.ts",
     "build": "yarn tsoa && tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/generated',{recursive:true});fs.copyFileSync('src/generated/swagger.json','dist/generated/swagger.json')\"",
-    "start": "node --env-file-if-exists=.env dist/index.js"
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

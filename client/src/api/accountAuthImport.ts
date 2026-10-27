@@ -9,6 +9,7 @@ export type ChangedRow = components['schemas']['ChangedRow']
 export type DeletedRow = components['schemas']['DeletedRow']
 export type RestoredRow = components['schemas']['RestoredRow']
 export type ValidationError = components['schemas']['ValidationError']
+export type EntitlementChange = components['schemas']['EntitlementChange']
 export type ApplyImportResult = components['schemas']['ApplyImportResult']
 
 // 認証に関わる（事故ると客がログインできなくなる）項目。UIで強調する

@@ -71,6 +71,8 @@ const sampleDiff: ImportDiff = {
     },
   ],
   unchangedCount: 3,
+  entitlementChanges: [],
+  rowErrors: [],
   validationErrors: [],
 }
 
@@ -149,7 +151,41 @@ export const NoChanges: Story = {
   args: {
     diff: {
       added: [], changed: [], deleted: [], restored: [],
-      unchangedCount: 5, validationErrors: [],
+      unchangedCount: 5, entitlementChanges: [], rowErrors: [], validationErrors: [],
+    },
+  },
+}
+
+// 権限（三者択一）とDIAG用アカウントの変化が混在する差分。
+// - dealer020（追加）：新規の通常アカウントに ALL_MANUAL を付ける
+// - dealer010（変更）：項目の変更に加えて、権限が ALL_MANUAL → HTML_BROWSING に切り替わる
+// - dealer011（削除）：解約日が入り、通常・DIAG用とも論理削除、権限も外れる
+// - dealer013（権限・DIAG）：通常アカウントは変更なし。権限だけが付き、DIAG用の論理削除が復活する
+export const WithEntitlementChanges: Story = {
+  args: {
+    diff: {
+      ...sampleDiff,
+      entitlementChanges: [
+        { line: 1, number: 1020, accountName: 'dealer020', accountId: null, authority: { before: null, after: 'ALL_MANUAL' }, diag: null },
+        { line: 2, number: 1010, accountName: 'dealer010', accountId: 10, authority: { before: 'ALL_MANUAL', after: 'HTML_BROWSING' }, diag: null },
+        { line: 3, number: 1011, accountName: 'dealer011', accountId: 11, authority: { before: 'ALL_MANUAL', after: null }, diag: { id: 31, before: 'alive', after: 'deleted' } },
+        { line: 6, number: 1013, accountName: 'dealer013', accountId: 13, authority: { before: null, after: 'HTML_BROWSING' }, diag: { id: 33, before: 'deleted', after: 'alive' } },
+      ],
+    },
+  },
+}
+
+// 電子マニュアル／多機能版HTML／DIAG列の値が不正な行。その行は差分に含まれず（一切更新されない）、
+// 適用ボタンは有効のまま、エラーの一覧だけが赤く出る。検証エラー（適用全体を止める）とは別物
+export const WithRowErrors: Story = {
+  args: {
+    diff: {
+      ...sampleDiff,
+      rowErrors: [
+        { line: 7, number: 1040, message: 'No.1040：電子マニュアル列に無効な記号があります（○・×・入力なしのみ有効）' },
+        { line: 8, number: 1041, message: 'No.1041：どこにも登録されない組み合わせです（電子マニュアル×・多機能版HTMLなし・DIAGなし）' },
+        { line: 9, number: 1042, message: 'No.1042：生きている通常アカウントが「電子マニュアル×・多機能版HTMLなし」になる変更は無効です（解約日が無い限り通常アカウントは削除されません）' },
+      ],
     },
   },
 }

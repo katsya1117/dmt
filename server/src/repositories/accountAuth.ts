@@ -26,6 +26,10 @@ import { hashPassword } from "../utils/hashPassword";
 // PHP側は引数ではなく別のサービスクラス（専用メソッド名の方針）で切り替える
 export type AccountAuthTarget = "normal" | "diag";
 
+// 権限は三者択一（なし／ALL_MANUAL／HTML_BROWSING）。このツールが扱うのはこの2種類だけで、
+// t_authority_manage のほかの権限行には触れない
+export type Authority = "ALL_MANUAL" | "HTML_BROWSING";
+
 const PHP_SERVICE: Record<AccountAuthTarget, string> = {
   normal: "DbManagerTInetUserAuth",
   diag: "DbManagerTInetUserAuthDiag",
@@ -237,6 +241,16 @@ export interface ApplyImportParams {
   changed: { id: number; after: AccountAuthInput }[];
   deleted: { id: number; comment: string }[];
   restored: { id: number; comment: string }[];
+  // 権限とDIAG用（省略時は通常アカウントだけを書く）
+  entitlement?: {
+    // addedと同じ並び・同じ長さ。追加した通常アカウントに付ける権限（null＝なし）
+    addedAuthorities: (Authority | null)[];
+    // 既存の通常アカウント（idで特定）の権限をこの値に揃える。changed/deleted/restoredに
+    // 含まれないid（通常アカウント自体は変更が無く権限だけ変わる行）も含む
+    authorityById: { id: number; authority: Authority | null }[];
+    // DIAG用アカウントの論理削除・復活（新規追加はしない）
+    diag: { id: number; delfg: boolean }[];
+  };
 }
 
 export interface ApplyImportResult {
@@ -244,6 +258,29 @@ export interface ApplyImportResult {
   updated: number;
   deleted: number;
   restored: number;
+  // 権限を同期した通常アカウントの件数と、書き込んだDIAG用アカウントの件数
+  authoritySynced: number;
+  diagWritten: number;
+}
+
+// 通常アカウントに付いている管理対象の権限（ALL_MANUAL/HTML_BROWSING）。
+// applicate=1のものが「今有効な権限」。三者択一のはずだが、万一両方有効なら
+// ALL_MANUALを優先して返す（差分計算がそれを正しい状態に揃え直す）
+export async function listManagedAuthorities(): Promise<Map<number, Authority | null>> {
+  const rows = await callAmfphpService<
+    { account_id: number | string; authority_type: string; applicate: number | string | null }[]
+  >("DbManagerAccountAuthImport", "loadAuthorities", []);
+  const map = new Map<number, Authority | null>();
+  for (const r of rows) {
+    const accountId = Number(r.account_id);
+    if (!map.has(accountId)) map.set(accountId, null);
+    if (String(r.applicate) !== "1") continue;
+    const type = r.authority_type as Authority;
+    const current = map.get(accountId);
+    if (current === "ALL_MANUAL") continue;
+    map.set(accountId, type);
+  }
+  return map;
 }
 
 export async function applyAccountAuthImport(
@@ -251,31 +288,62 @@ export async function applyAccountAuthImport(
 ): Promise<ApplyImportResult> {
   // 部分更新なので、deleted/restoredは{id, delfg, comment}だけ、changedは
   // password抜きの残り全列だけを送ればよい（現在行の事前読み込みは不要）
+  type AccountInfo = Omit<PhpInfo, "updatemark"> & {
+    updatemark: "INSERT" | "UPDATE" | "NONE"; // NONE＝通常アカウントは更新せず権限だけ同期
+    authority?: Authority | null;
+  };
+  const accounts: AccountInfo[] = [];
+  const ent = params.entitlement;
+  const authorityOf = new Map(ent?.authorityById.map((a) => [a.id, a.authority]));
+  const withAuthority = (info: AccountInfo, id: number): AccountInfo =>
+    authorityOf.has(id)
+      ? { ...info, authority: authorityOf.get(id) ?? null }
+      : info;
 
-  const data: PhpInfo[] = [];
-
-  for (const a of params.added) {
-    data.push(
-      toPhpInfo({ ...a, password: hashPassword(a.password) }, "INSERT"),
+  params.added.forEach((a, i) => {
+    const info: AccountInfo = toPhpInfo(
+      { ...a, password: hashPassword(a.password) },
+      "INSERT",
     );
-  }
+    if (ent) info.authority = ent.addedAuthorities[i] ?? null;
+    accounts.push(info);
+  });
   for (const c of params.changed) {
     // passwordは意図的に含めない（accountAuthDiff.tsのINPUT_FIELDSからも除外
     // 済み。Excelの初期パスワードで現在のハッシュを上書きしないため、部分更新で
     // キーごと省略し、既存の値をそのまま保持させる）
     const info = toPhpInfo(c.after, "UPDATE", c.id);
     delete info.password;
-    data.push(info);
+    accounts.push(withAuthority(info, c.id));
   }
   for (const d of params.deleted) {
-    data.push({ updatemark: "UPDATE", id: d.id, delfg: true, comment: d.comment });
+    accounts.push(
+      withAuthority(
+        { updatemark: "UPDATE", id: d.id, delfg: true, comment: d.comment },
+        d.id,
+      ),
+    );
   }
   for (const r of params.restored) {
-    data.push({ updatemark: "UPDATE", id: r.id, delfg: false, comment: r.comment });
+    accounts.push(
+      withAuthority(
+        { updatemark: "UPDATE", id: r.id, delfg: false, comment: r.comment },
+        r.id,
+      ),
+    );
+  }
+  // 通常アカウント自体は変更が無く、権限だけが変わる行
+  const written = new Set(
+    [...params.changed.map((c) => c.id), ...params.deleted.map((d) => d.id), ...params.restored.map((r) => r.id)],
+  );
+  for (const a of ent?.authorityById ?? []) {
+    if (!written.has(a.id)) accounts.push({ updatemark: "NONE", id: a.id, authority: a.authority });
   }
 
-  if (data.length > 0) {
-    await callAmfphpService("DbManagerTInetUserAuth", "update", [data]);
+  if (accounts.length > 0 || (ent?.diag.length ?? 0) > 0) {
+    await callAmfphpService("DbManagerAccountAuthImport", "apply", [
+      { accounts, diag: ent?.diag ?? [] },
+    ]);
   }
 
   return {
@@ -283,5 +351,9 @@ export async function applyAccountAuthImport(
     updated: params.changed.length,
     deleted: params.deleted.length,
     restored: params.restored.length,
+    authoritySynced:
+      (ent?.authorityById.length ?? 0) +
+      (ent?.addedAuthorities.filter((x) => x !== null).length ?? 0),
+    diagWritten: ent?.diag.length ?? 0,
   };
 }

@@ -71,6 +71,28 @@ class DBConnection
                 )");
             }
 
+            // 権限マスタとユーザー権限（客先実物のDDLをSQLite向けに変換。MySQL固有構文は落とす）。
+            // 日時列の綴りは registed_date（ユーザー確認 2026-10-26）
+            $this->dbh->exec("CREATE TABLE t_authority_manage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                authority_type TEXT NOT NULL UNIQUE,
+                note TEXT,
+                level INTEGER DEFAULT 0,
+                applicate INTEGER DEFAULT 1,
+                registed_date TEXT NOT NULL,
+                updated_date TEXT NOT NULL
+            )");
+            $this->dbh->exec("CREATE TABLE t_user_authority_manage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                authority_id INTEGER NOT NULL,
+                account_type INTEGER NOT NULL,
+                account_id INTEGER NOT NULL,
+                applicate INTEGER DEFAULT NULL,
+                registed_date TEXT NOT NULL,
+                updated_date TEXT NOT NULL,
+                UNIQUE(authority_id, account_type, account_id)
+            )");
+
             // 複数機能が相乗りする汎用キー・バリュー設定テーブル。
             // 客先実物のDDLをSQLite向けに変換（COLLATE/ENGINE/COMMENT等のMySQL固有構文は落とす）。
             // 詳細はdocs/AMFPHP連携_差分除外リスト.md参照
@@ -105,6 +127,17 @@ class DBConnection
                 $row[] = $now;
                 $seed->execute($row);
             }
+
+            // 権限マスタ（管理対象の2種類。実物にはほかの権限行もあるが、このツールは触らない）
+            $authSeed = $this->dbh->prepare("INSERT INTO t_authority_manage
+                (authority_type, note, level, applicate, registed_date, updated_date) VALUES (?, ?, 0, 1, ?, ?)");
+            $authSeed->execute(array('ALL_MANUAL', '電子マニュアル全閲覧', $now, $now));
+            $authSeed->execute(array('HTML_BROWSING', 'HTML版のみ閲覧', $now, $now));
+            // dealer001(id=1)にALL_MANUAL、dealer002(id=2)に外したHTML_BROWSING(applicate=0)
+            $userAuthSeed = $this->dbh->prepare("INSERT INTO t_user_authority_manage
+                (authority_id, account_type, account_id, applicate, registed_date, updated_date) VALUES (?, 0, ?, ?, ?, ?)");
+            $userAuthSeed->execute(array(1, 1, 1, $now, $now));
+            $userAuthSeed->execute(array(2, 2, 0, $now, $now));
 
             // DIAG用テーブルのデモ用データ（通常にもいる人と、DIAG用にしかいない人を混ぜる）
             $seedDiag = $this->dbh->prepare("INSERT INTO t_inet_user_auth_ds3
