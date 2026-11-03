@@ -4,13 +4,12 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
-import IconButton from "@mui/material/IconButton";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { accountAuthApi } from "../../store/services/accountAuthApi";
 
 type Props = {
@@ -83,33 +82,21 @@ export function ImportExcludeNumbersDialog({ open, onClose }: Props) {
             追加
           </Button>
         </Stack>
-        <Stack spacing={1}>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
           {rows.length === 0 && !isFetching && (
             <Typography variant="body2" color="text.secondary">
               登録されているNo.はありません
             </Typography>
           )}
           {rows.map((r) => (
-            <Stack
+            <Chip
               key={r.id}
-              direction="row"
-              spacing={1}
-              sx={{ alignItems: "center" }}
-            >
-              <Chip label={`No.${r.number}`} size="small" />
-              <Typography variant="body2" sx={{ flex: 1 }}>
-                {r.comment ?? ""}
-              </Typography>
-              <IconButton
-                size="small"
-                aria-label="削除"
-                onClick={() => remove(r.id)}
-              >
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Stack>
+              label={r.comment ? `No.${r.number}（${r.comment}）` : `No.${r.number}`}
+              size="small"
+              onDelete={() => remove(r.id)}
+            />
           ))}
-        </Stack>
+        </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>閉じる</Button>
