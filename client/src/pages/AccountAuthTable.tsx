@@ -10,15 +10,15 @@
 // │  - 一覧テーブルは MUI DataGrid（仮想化込み・大量行対応）        │
 // └─────────────────────────────────────────────────────────────┘
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+// import { useSearchParams } from 'react-router-dom' // DIAG機能無効化中（下記参照）につき未使用
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import Chip from '@mui/material/Chip'
-import ToggleButton from '@mui/material/ToggleButton'
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
+// import ToggleButton from '@mui/material/ToggleButton' // DIAG機能無効化中につき未使用
+// import ToggleButtonGroup from '@mui/material/ToggleButtonGroup' // 同上
 import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import Tooltip from '@mui/material/Tooltip'
@@ -27,7 +27,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import DialogContent from '@mui/material/DialogContent'
 import DialogContentText from '@mui/material/DialogContentText'
 import DialogActions from '@mui/material/DialogActions'
-import { DataGrid, useGridApiRef, GridPreferencePanelsValue, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, useGridApiRef, GridPreferencePanelsValue, type GridColDef, type GridRenderCellParams } from '@mui/x-data-grid'
 import AddIcon from '@mui/icons-material/Add'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import ViewColumnIcon from '@mui/icons-material/ViewColumn'
@@ -66,17 +66,24 @@ const TEXT_COLS: { key: keyof AccountAuth; label: string; width: number }[] = [
 ]
 
 export default function AccountAuthTable() {
-  // 通常アカウントとDIAG用アカウントは同じ構造の別テーブルで、同じ画面部品で扱う。
-  // 切り替えはURLの ?target=diag に載せる（再読み込みしても保持され、リンクも共有できる）。
-  // DIAGアカウントは廃止予定のため、DIAG側は既存行の閲覧・編集・論理削除と復活だけを扱い、
-  // 新規追加とExcel取り込み（通常アカウント側の入口）は出さない
-  const [searchParams, setSearchParams] = useSearchParams()
-  const target: AccountAuthTarget = searchParams.get('target') === 'diag' ? 'diag' : 'normal'
-  const isDiag = target === 'diag'
-  const handleTargetChange = (_: unknown, next: AccountAuthTarget | null) => {
-    if (!next) return // 同じボタンの再クリックで選択が外れるのを防ぐ（必ずどちらかが選ばれている）
-    setSearchParams(next === 'diag' ? { target: 'diag' } : {}, { replace: true })
-  }
+  // 通常アカウントとDIAG用アカウントは同じ構造の別テーブルで、同じ画面部品で扱う
+  // 作りだった（切り替えはURLの ?target=diag）。
+  // 【2026-11-04 DIAG機能を一時的に無効化】DIAGアカウントの情報は、このアプリは
+  // もちろん客先の他システム（旧FLEXアプリ含む）からも一切参照されないことが
+  // 判明したため、手動での閲覧・編集画面は過剰と判断し入口を塞いだ。
+  // Excel取り込み側（判定ロジック・DIAG用テーブルへの論理削除/復活の書き込み）は
+  // 触っていない：判定ロジックは通常登録/権限の計算に必須、書き込みは既に動いて
+  // いるものを今さら削るリスクが実利に見合わないため。再度画面が必要になったら
+  // 下のコメントアウトを戻す（詳細はdocs/アカウント認証_権限とDIAG用アカウント.md）
+  // const [searchParams, setSearchParams] = useSearchParams()
+  // const target: AccountAuthTarget = searchParams.get('target') === 'diag' ? 'diag' : 'normal'
+  // const isDiag = target === 'diag'
+  // const handleTargetChange = (_: unknown, next: AccountAuthTarget | null) => {
+  //   if (!next) return // 同じボタンの再クリックで選択が外れるのを防ぐ（必ずどちらかが選ばれている）
+  //   setSearchParams(next === 'diag' ? { target: 'diag' } : {}, { replace: true })
+  // }
+  const target: AccountAuthTarget = 'normal'
+  const isDiag = false
 
   // 削除は行を消すことではなく状態を変えるだけ。常に全件（削除済み含む）表示し、
   // 状態は「状態」列のチップで区別する（行ごと消えるとリストアの手段が無くなるため）
@@ -85,6 +92,37 @@ export default function AccountAuthTable() {
   const [update, { isLoading: updating }] = accountAuthApi.useUpdateAccountAuthMutation()
   const [applyImportDiff, { isLoading: applying }] = accountAuthApi.useApplyAccountAuthImportDiffMutation()
   // removeAccountAuth は削除機能未開放のため不使用
+
+  // DIAG画面専用：各行のNo./accountNameが通常テーブルに生きた形で存在するかの
+  // フラグ。DIAGテーブルの行は「生きている＝現役」ではない（判定表の通り、
+  // 通常にも登録される組み合わせと、通常には登録されない＝DIAG専用の組み合わせが
+  // 両方ありうる）。DIAG専用（＝通常に対応行が無い）行は、このアプリはもちろん
+  // 客先の他システムからも一切参照されない死んだアカウントなので、目視で区別
+  // できるようにする（2026-11-04、docs/アカウント認証_権限とDIAG用アカウント.md）。
+  // 【隠したまま準備だけ】DIAG画面の入口自体は上のtarget/isDiagで無効化中のため
+  // isDiagは常にfalseで、このクエリはskipされ実質発火しない。画面を復活させる
+  // 時は上のコメントアウトを戻すだけで、ここは自動的に動き出す
+  const { data: normalDataForDiagCheck } = accountAuthApi.useAccountAuthListQuery('normal', { skip: !isDiag })
+  const liveNormalNumbers = useMemo(
+    () =>
+      new Set(
+        (normalDataForDiagCheck ?? [])
+          .filter((r) => !r.delfg && r.number != null)
+          .map((r) => r.number as number),
+      ),
+    [normalDataForDiagCheck],
+  )
+  const liveNormalAccountNames = useMemo(
+    () => new Set((normalDataForDiagCheck ?? []).filter((r) => !r.delfg).map((r) => r.accountName)),
+    [normalDataForDiagCheck],
+  )
+  // No.優先、無ければaccountNameで通常テーブルと突き合わせる
+  // （computeImportDiffの突き合わせ方針と同じ。No.は全レコードで一意という前提）
+  const hasLiveNormalCounterpart = useCallback(
+    (row: AccountAuth) =>
+      row.number != null ? liveNormalNumbers.has(row.number) : liveNormalAccountNames.has(row.accountName),
+    [liveNormalNumbers, liveNormalAccountNames],
+  )
 
   // 列の表示/非表示は DataGrid 標準の「列パネル」を使う。ただし内蔵ツールバー
   // （showToolbar）はヘッダー上に余白の帯を作り、トリガーも浮いて見えるため使わず、
@@ -303,10 +341,27 @@ export default function AccountAuthTable() {
       sortable: false,
       renderCell: (params) =>
         params.row.delfg
-          ? <Chip label="削���済み" color="error" size="small" />
+          ? <Chip label="削除済み" color="error" size="small" />
           : <Chip label="有効" color="success" variant="outlined" size="small" />,
     },
-  ], [openEdit])
+    // DIAG画面専用の列（上のhasLiveNormalCounterpart参照）。isDiagが常にfalseの
+    // 今は追加されない
+    ...(isDiag
+      ? [
+          {
+            field: 'hasNormalCounterpart',
+            headerName: '通常アカウント',
+            minWidth: 130,
+            flex: 130,
+            sortable: false,
+            renderCell: (params: GridRenderCellParams<AccountAuth>) =>
+              hasLiveNormalCounterpart(params.row)
+                ? <Chip label="有効" color="success" variant="outlined" size="small" />
+                : <Chip label="無効" color="error" size="small" />,
+          } satisfies GridColDef<AccountAuth>,
+        ]
+      : []),
+  ], [openEdit, isDiag, hasLiveNormalCounterpart])
 
   return (
     <Box sx={{ p: 3 }}>
@@ -318,7 +373,8 @@ export default function AccountAuthTable() {
       >
         <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 2 }}>
           <Typography variant="h1" sx={{ m: 0 }}>アカウント認証テーブル</Typography>
-          <ToggleButtonGroup
+          {/* DIAG機能無効化中（上部のtarget宣言のコメント参照）につき切り替えボタンも非表示 */}
+          {/* <ToggleButtonGroup
             exclusive
             size="small"
             value={target}
@@ -327,7 +383,7 @@ export default function AccountAuthTable() {
           >
             <ToggleButton value="normal">通常</ToggleButton>
             <ToggleButton value="diag">DIAG</ToggleButton>
-          </ToggleButtonGroup>
+          </ToggleButtonGroup> */}
         </Stack>
         {!isDiag && (
           <Stack direction="row" useFlexGap sx={{ alignItems: 'center', gap: 1 }}>
