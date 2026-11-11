@@ -14,6 +14,7 @@ const before: AccountAuth = {
   submission_date: '2024-04-01', regist_date: '2024-04-05',
   company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
   non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
+  authority: null,
 }
 
 const deletedBefore: AccountAuth = {

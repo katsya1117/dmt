@@ -18,6 +18,8 @@ export type AccountAuth = components['schemas']['AccountAuth']
 export type AccountAuthInput = components['schemas']['AccountAuthInput']
 // 操作対象のテーブル。normal=通常アカウント／diag=DIAG用アカウント（同じ構造の別テーブル）
 export type AccountAuthTarget = components['schemas']['AccountAuthTarget']
+// 権限は三者択一（なし／ALL_MANUAL／HTML_BROWSING）。権限は通常アカウントにだけ付く
+export type Authority = components['schemas']['Authority']
 
 // 削除済み(delfg=1)も含めた全件を返す（手動リストア用に「状態」列で区別する）
 export async function fetchAccountAuthList(target: AccountAuthTarget = 'normal'): Promise<AccountAuth[]> {
@@ -29,23 +31,30 @@ export async function fetchAccountAuthList(target: AccountAuthTarget = 'normal')
   }
 }
 
-// 手入力1件もExcel取り込み複数件も同じ口
-export async function createAccountAuth(records: AccountAuthInput[]): Promise<{ inserted: number }> {
+// 手入力1件もExcel取り込み複数件も同じ口。authorities指定時はrecordsと同じ
+// 並び・同じ長さの配列（省略時は権限に一切触れない）
+export async function createAccountAuth(
+  records: AccountAuthInput[],
+  authorities?: (Authority | null)[],
+): Promise<{ inserted: number }> {
   try {
-    const res = await http.post<{ inserted: number }>('/api/account-auth', { records })
+    const res = await http.post<{ inserted: number }>('/api/account-auth', { records, authorities })
     return res.data
   } catch (err) {
     throw toApiError(err, '追加に失敗しました')
   }
 }
 
+// authority省略時（undefined）は権限に一切触れない。null＝権限を外す、という
+// 明示的な選択と区別するため、「指定しない」はundefinedのまま呼び出すこと
 export async function updateAccountAuth(
   id: number,
   input: AccountAuthInput,
   target: AccountAuthTarget = 'normal',
+  authority?: Authority | null,
 ): Promise<AccountAuth> {
   try {
-    const res = await http.put<AccountAuth>(`/api/account-auth/${id}`, input, { params: { target } })
+    const res = await http.put<AccountAuth>(`/api/account-auth/${id}`, { input, authority }, { params: { target } })
     return res.data
   } catch (err) {
     throw toApiError(err, '更新に失敗しました')

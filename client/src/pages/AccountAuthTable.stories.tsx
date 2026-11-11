@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Provider as ReduxProvider } from 'react-redux'
 import { BrowserRouter } from 'react-router-dom'
-import { expect, within } from 'storybook/test'
+// import { expect, within } from 'storybook/test' // DIAGストーリー無効化中につき未使用
 import { createStore } from '../store'
 import { accountAuthHandlers, resetAccountAuthMock } from '../mocks/accountAuthHandlers'
 import { importExcludeListHandlers, resetImportExcludeNumbersMock } from '../mocks/importExcludeListHandlers'
@@ -44,14 +44,18 @@ type Story = StoryObj<typeof AccountAuthTable>
 // 一覧表示・新規追加・編集・Excel取り込み（差分プレビュー）が、MSW上で実際に動く
 export const Default: Story = {}
 
-// DIAG用アカウント（廃止予定のため、新規追加とExcel取り込みは出さず、既存行の閲覧・編集・
-// 論理削除と復活だけを扱う）。通常にはいないDIAG専用の行と論理削除済みの行が見える
-export const DiagTarget: Story = {
-  loaders: [() => { window.history.replaceState(null, '', '/?target=diag') }],
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await expect(await canvas.findByText('diag-only01')).toBeInTheDocument()
-    await expect(canvas.queryByRole('button', { name: /新規追加/ })).not.toBeInTheDocument()
-    await expect(canvas.queryByRole('button', { name: /Excel取り込み/ })).not.toBeInTheDocument()
-  },
-}
+// 【2026-11-12 DIAG機能無効化に伴いコメントアウト】DIAGアカウントの情報は
+// このアプリ・客先の他システムいずれからも参照されないことが判明し、通常⇔DIAG
+// 切り替え画面自体をAccountAuthTable.tsx側でコード上無効化した（targetは常に
+// 'normal'に固定）。このストーリーはURLクエリで?target=diagを模してDIAG表示を
+// 確認するものだったが、今はtargetが固定なので意味を持たない。画面を復活させる
+// 時はAccountAuthTable.tsxの該当コメントアウトと合わせてこれも復活させる
+// export const DiagTarget: Story = {
+//   loaders: [() => { window.history.replaceState(null, '', '/?target=diag') }],
+//   play: async ({ canvasElement }) => {
+//     const canvas = within(canvasElement)
+//     await expect(await canvas.findByText('diag-only01')).toBeInTheDocument()
+//     await expect(canvas.queryByRole('button', { name: /新規追加/ })).not.toBeInTheDocument()
+//     await expect(canvas.queryByRole('button', { name: /Excel取り込み/ })).not.toBeInTheDocument()
+//   },
+// }

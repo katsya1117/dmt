@@ -41,7 +41,7 @@ import { ImportValueNormalizeRulesDialog } from '../components/accountAuth/Impor
 import { FilterInline } from '../components/accountAuth/filterVariants/FilterInline'
 import { OverflowTooltipCell } from '../components/dataGrid/OverflowTooltipCell'
 import { previewImport, type ImportDiff } from '../api/accountAuthImport'
-import type { AccountAuth, AccountAuthInput, AccountAuthTarget } from '../api/accountAuth'
+import type { AccountAuth, AccountAuthInput, AccountAuthTarget, Authority } from '../api/accountAuth'
 
 // テキスト列（診断対象外/状態/操作 は別途renderCellで描画）。
 // widthは最小幅として使い、flexも同じ比率で持たせることで、列合計が画面幅より
@@ -254,7 +254,7 @@ export default function AccountAuthTable() {
   // Promiseを解決させず、フォームダイアログを開いたまま何も起きないようにする
   // （AccountAuthFormDialog側はawaitしたまま止まるだけで、閉じたりエラー表示は
   // されない。フォームは編集可能なまま残る）
-  const handleSubmit = (input: AccountAuthInput): Promise<void> => {
+  const handleSubmit = (input: AccountAuthInput, authority: Authority | null): Promise<void> => {
     return new Promise((resolve, reject) => {
       const message = editTarget
         ? `「${input.accountName}」の内容を更新します。よろしいですか？`
@@ -262,7 +262,9 @@ export default function AccountAuthTable() {
       setConfirmState({
         message,
         onConfirm: () => {
-          const action = editTarget ? update({ id: editTarget.id, input, target }).unwrap() : create([input]).unwrap()
+          const action = editTarget
+            ? update({ id: editTarget.id, input, target, authority }).unwrap()
+            : create({ records: [input], authorities: [authority] }).unwrap()
           action.then(() => resolve()).catch((e) => reject(e))
         },
       })
@@ -332,6 +334,17 @@ export default function AccountAuthTable() {
       renderCell: (params) => (
         <Chip label={params.row.non_sync ? '対象外' : '通常'} color={params.row.non_sync ? 'warning' : 'default'} size="small" />
       ),
+    },
+    {
+      field: 'authority',
+      headerName: '権限',
+      minWidth: 110,
+      flex: 110,
+      sortable: false,
+      renderCell: (params) =>
+        params.row.authority
+          ? <Chip label={params.row.authority} color="info" variant="outlined" size="small" />
+          : <Chip label="なし" color="default" variant="outlined" size="small" />,
     },
     {
       field: 'delfg',

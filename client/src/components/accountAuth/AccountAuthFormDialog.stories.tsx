@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import Button from '@mui/material/Button'
 import { AccountAuthFormDialog } from './AccountAuthFormDialog'
-import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
+import type { AccountAuth, AccountAuthInput, Authority } from '../../api/accountAuth'
 
 // passwordは実際にはSHA-1ハッシュが入る（サーバーは平文を保存しない）。
 // フォームは編集時にpasswordを空欄で始める設計なのでこの値自体は画面に出ないが、
@@ -13,13 +13,14 @@ const sampleRow: AccountAuth = {
   company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
   non_sync: true, store_cd: 'S002', store_name: '仙台駅前店',
   reg_date: '2026-07-01 09:00:00', upd_date: '2026-07-01 09:00:00', delfg: false,
+  authority: 'ALL_MANUAL',
 }
 
 // 開閉とsubmit内容の確認用ラッパー
 function Harness({ target, suggestedNumber }: { target: AccountAuth | null; suggestedNumber?: number }) {
   const [open, setOpen] = useState(true)
-  const [submitted, setSubmitted] = useState<AccountAuthInput | null>(null)
-  const handleSubmit = async (input: AccountAuthInput) => { setSubmitted(input) }
+  const [submitted, setSubmitted] = useState<{ input: AccountAuthInput; authority: Authority | null } | null>(null)
+  const handleSubmit = async (input: AccountAuthInput, authority: Authority | null) => { setSubmitted({ input, authority }) }
   return (
     <div style={{ padding: 16 }}>
       <Button variant="outlined" onClick={() => setOpen(true)}>ダイアログを開く</Button>

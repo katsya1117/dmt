@@ -1,21 +1,27 @@
 <?php
 require_once __DIR__ . '/AuthSession.php';
 require_once __DIR__ . '/../../lib/TInetUserAuthWriter.php';
+require_once __DIR__ . '/../../lib/AuthorityManageWriter.php';
 
-// アカウント認証のExcel取り込み適用。通常アカウント・DIAG用アカウント・権限
-// （t_user_authority_manage）をまたいで書き込む「複数テーブルに波及する操作」なので、
-// 引数でテーブルを選ばず、専用のサービス・メソッド名で表現する（2026-10-09方針）。
+// アカウント認証のExcel取り込み適用**専用**。通常アカウント・DIAG用アカウント・権限
+// （t_user_authority_manage）をまたいで、1回の呼び出しで複数件まとめて書き込む
+// 「複数テーブルに波及するバッチ操作」なので、引数でテーブルを選ばず、専用のサービス・
+// メソッド名で表現する（2026-10-09方針）。
+//
+// 【Excel取り込み専用である理由】個別の手動編集・手動追加（1件だけ、権限込みのことも
+// ある）は、ここではなく DbManagerTInetUserAuth.update の authority 付き呼び出しを使う
+// （2026-11-12）。件数・エラー処理の考え方（本サービスは「ベストエフォート、途中失敗は
+// 次回の再取り込みで補う」前提。手動編集はその場で正確な成否を返したい）が違うため、
+// あえてサービスを分けている。詳細はdocs/アカウント認証_権限とDIAG用アカウント.md参照
 //
 // 【原子性の限界】t_user_authority_manage は MyISAM（トランザクション非対応）。
 // 途中で失敗しても巻き戻せない。Express側は毎回DBを読み直して差分を再計算するため、
 // 失敗後に同じファイルをもう一度取り込めば残りが自然に補われる（冪等）。
 // ここでは最初の失敗で即座に打ち切り、何件目で失敗したかをerrormsgに入れて返す。
 //
-// 権限は ALL_MANUAL / HTML_BROWSING の2種類だけを扱い、三者択一（なし／どちらか一方）に
-// 揃える。それ以外の権限行には一切触れない。外すときは行を消さず applicate = 0 にする
-// （UNIQUE KEY (authority_id, account_type, account_id) があるため、再付与は行の再利用）。
-// account_type は通常/DIAGを区別する列ではない（ユーザー確認 2026-10-21）。旧PHPが
-// 電子マニュアルアカウントの権限行に使っていた 0 を固定で使う。
+// 権限（ALL_MANUAL/HTML_BROWSING）の実際の同期ロジックは AuthorityManageWriter
+// （lib/AuthorityManageWriter.php）に切り出し済み。DbManagerTInetUserAuth.update・
+// DbManagerAuthorityManage とも同じ部品を使う（2026-11-12切り出し）
 
 if (!defined('RESULT_SUCCESS')) define('RESULT_SUCCESS', 0);
 if (!defined('RESULT_FAILURE')) define('RESULT_FAILURE', -1);
@@ -25,33 +31,6 @@ class DbManagerAccountAuthImport
 {
     private $normalTable = 't_inet_user_auth';
     private $diagTable = 't_inet_user_auth_ds3';
-    private $managedAuthorities = array('ALL_MANUAL', 'HTML_BROWSING');
-    private $accountType = 0;
-
-    // 通常アカウントに付いている管理対象の権限（ALL_MANUAL/HTML_BROWSING）の一覧。
-    // applicate=0（外した行）も含めて返す（Express側が「今どれが有効か」を判断する）
-    public function loadAuthorities($userid = null, $key = null, $target = 0)
-    {
-        $auth = new AuthSession();
-        if (!$auth->checkLogin($userid, $key)) {
-            return array('code' => RESULT_FAILURE, 'errorcode' => ERROR_LOGIN_STATE_MISSMATCH, 'errormsg' => "don't login");
-        }
-        $db = $auth->connectionDb($target);
-        $rows = $db->query(
-            "select u.account_id as account_id, a.authority_type as authority_type, u.applicate as applicate
-               from t_user_authority_manage u
-               join t_authority_manage a on a.id = u.authority_id
-              where u.account_type = ? and a.authority_type in ('ALL_MANUAL', 'HTML_BROWSING')
-              order by u.account_id",
-            array($this->accountType)
-        );
-        $err = $db->errMsg;
-        $db->close();
-        if ($rows === false || $rows === null) {
-            return array('code' => RESULT_FAILURE, 'errormsg' => $err ?: 'DB接続に失敗しました');
-        }
-        return array('code' => RESULT_SUCCESS, 'output' => $rows);
-    }
 
     // $data = { accounts: [...], diag: [...] }
     //  accounts: 通常アカウント。{updatemark: INSERT|UPDATE|NONE, id?, ...列の値, authority?}
@@ -80,7 +59,7 @@ class DbManagerAccountAuthImport
         $authorityIds = null;
         foreach ($accounts as $info) {
             if (property_exists($info, 'authority')) {
-                $authorityIds = $this->loadAuthorityIds($db);
+                $authorityIds = AuthorityManageWriter::loadAuthorityIds($db);
                 if ($authorityIds === null) return $fail('権限マスタ(t_authority_manage)にALL_MANUAL/HTML_BROWSINGが見つかりません');
                 break;
             }
@@ -98,7 +77,7 @@ class DbManagerAccountAuthImport
                 }
             }
             if ($accountId !== null && property_exists($info, 'authority')) {
-                $err = $this->syncAuthority($db, $accountId, $info->authority, $authorityIds, $now);
+                $err = AuthorityManageWriter::sync($db, $accountId, $info->authority, $authorityIds, $now);
                 if ($err !== null) return $fail('権限の書き込みに失敗しました（' . ($i + 1) . '件目）: ' . $err);
             }
             $done['accounts']++;
@@ -114,54 +93,5 @@ class DbManagerAccountAuthImport
 
         $db->close();
         return array('code' => RESULT_SUCCESS, 'errorcode' => 0, 'errormsg' => '', 'output' => $done);
-    }
-
-    // authority_type => id。2種類とも見つからなければnull
-    private function loadAuthorityIds($db)
-    {
-        $rows = $db->query("select id, authority_type from t_authority_manage where authority_type in ('ALL_MANUAL', 'HTML_BROWSING')");
-        if (!is_array($rows)) return null;
-        $ids = array();
-        foreach ($rows as $row) $ids[$row['authority_type']] = (int) $row['id'];
-        foreach ($this->managedAuthorities as $type) {
-            if (!isset($ids[$type])) return null;
-        }
-        return $ids;
-    }
-
-    // 管理対象の2種類を、desired（'ALL_MANUAL'|'HTML_BROWSING'|null）に揃える。
-    // 戻り値：成功ならnull、失敗ならエラーメッセージ
-    private function syncAuthority($db, $accountId, $desired, $authorityIds, $now)
-    {
-        foreach ($this->managedAuthorities as $type) {
-            $authorityId = $authorityIds[$type];
-            $existing = $db->query(
-                "select id, applicate from t_user_authority_manage where authority_id = ? and account_type = ? and account_id = ?",
-                array($authorityId, $this->accountType, $accountId)
-            );
-            if (!is_array($existing)) return $db->errMsg ?: 'DBの読み取りに失敗しました';
-            $row = count($existing) > 0 ? $existing[0] : null;
-
-            if ($type === $desired) {
-                if ($row === null) {
-                    $ret = $db->execute(
-                        "insert into t_user_authority_manage (authority_id, account_type, account_id, applicate, registed_date, updated_date) values (?, ?, ?, 1, ?, ?)",
-                        array($authorityId, $this->accountType, $accountId, $now, $now)
-                    );
-                } elseif ((int) $row['applicate'] !== 1) {
-                    $ret = $db->execute("update t_user_authority_manage set applicate = 1, updated_date = ? where id = ?", array($now, $row['id']));
-                } else {
-                    $ret = true;
-                }
-            } else {
-                if ($row !== null && (int) $row['applicate'] === 1) {
-                    $ret = $db->execute("update t_user_authority_manage set applicate = 0, updated_date = ? where id = ?", array($now, $row['id']));
-                } else {
-                    $ret = true;
-                }
-            }
-            if (!$ret) return $db->errMsg;
-        }
-        return null;
     }
 }

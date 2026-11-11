@@ -23,18 +23,21 @@ const initialRows: AccountAuth[] = [
     submission_date: '2024-04-01', regist_date: '2024-04-05',
     company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
     non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
+    authority: 'ALL_MANUAL',
   },
   {
     id: 2, accountName: 'dealer002', password: fakeHashPassword('pw-002'), comment: null, number: 1002,
     submission_date: '2024-05-10', regist_date: '2024-05-12',
     company_cd: 'C02', company_name: '東日本販売', company_store_cd: 'CS02', company_store_branch_num: '03',
     non_sync: true, store_cd: 'S002', store_name: '仙台駅前店', reg_date: ts, upd_date: ts, delfg: false,
+    authority: null,
   },
   {
     id: 3, accountName: 'admin-honsha', password: fakeHashPassword('pw-adm'), comment: '本社管理', number: 9001,
     submission_date: null, regist_date: '2023-01-01',
     company_cd: 'C00', company_name: '本社', company_store_cd: null, company_store_branch_num: null,
     non_sync: false, store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg: false,
+    authority: null,
   },
 ]
 
@@ -46,18 +49,21 @@ const initialDiagRows: AccountAuth[] = [
     submission_date: '2024-04-01', regist_date: '2024-04-05',
     company_cd: 'C01', company_name: '北日本販売', company_store_cd: 'CS01', company_store_branch_num: '01',
     non_sync: false, store_cd: 'S001', store_name: '札幌中央店', reg_date: ts, upd_date: ts, delfg: false,
+    authority: null,
   },
   {
     id: 2, accountName: 'diag-only01', password: fakeHashPassword('pw-d01'), comment: 'DIAGのみの契約', number: 2001,
     submission_date: '2024-06-01', regist_date: '2024-06-03',
     company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '02',
     non_sync: false, store_cd: 'S010', store_name: '大阪南店', reg_date: ts, upd_date: ts, delfg: false,
+    authority: null,
   },
   {
     id: 3, accountName: 'diag-old02', password: fakeHashPassword('pw-d02'), comment: null, number: 2002,
     submission_date: '2023-02-01', regist_date: '2023-02-02',
     company_cd: 'C03', company_name: '西日本販売', company_store_cd: 'CS03', company_store_branch_num: '04',
     non_sync: false, store_cd: 'S011', store_name: '神戸店', reg_date: ts, upd_date: ts, delfg: true,
+    authority: null,
   },
 ]
 
@@ -282,7 +288,7 @@ export const accountAuthHandlers = [
       if (!cur) {
         // 新規追加はExcelのcomment列を使わず常に空で始める
         const comment = commentOverrides[line] ?? null
-        rows.push({ ...r, password: fakeHashPassword(r.password), comment, id: nextId++, reg_date: now(), upd_date: now() })
+        rows.push({ ...r, password: fakeHashPassword(r.password), comment, id: nextId++, reg_date: now(), upd_date: now(), authority: null })
         inserted++
         return
       }
@@ -329,7 +335,7 @@ export const accountAuthHandlers = [
     if (isDiagRequest(request)) {
       return HttpResponse.json({ error: 'DIAG用アカウントへの新規追加はできません' }, { status: 400 })
     }
-    const body = (await request.json()) as { records?: AccountAuthInput[] }
+    const body = (await request.json()) as { records?: AccountAuthInput[]; authorities?: (AccountAuth['authority'])[] }
     const records = body.records ?? []
     if (records.length === 0) {
       return HttpResponse.json({ error: 'records（配列）が必要です' }, { status: 400 })
@@ -340,16 +346,24 @@ export const accountAuthHandlers = [
     if (errors.length > 0) {
       return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
     }
-    for (const r of records) {
-      rows.push({ ...r, password: fakeHashPassword(r.password), id: nextId++, reg_date: now(), upd_date: now() })
-    }
+    records.forEach((r, i) => {
+      rows.push({
+        ...r,
+        password: fakeHashPassword(r.password),
+        id: nextId++,
+        reg_date: now(),
+        upd_date: now(),
+        authority: body.authorities?.[i] ?? null,
+      })
+    })
     return HttpResponse.json({ inserted: records.length }, { status: 201 })
   }),
 
   http.put('/api/account-auth/:id', async ({ params, request }) => {
     await delay(150)
     const id = Number(params.id)
-    const input = (await request.json()) as AccountAuthInput
+    const body = (await request.json()) as { input: AccountAuthInput; authority?: AccountAuth['authority'] }
+    const input = body.input
     // 通常とDIAG用は別の配列。以降は対象の配列(list)だけを見て同じ処理を流用する
     const list = isDiagRequest(request) ? diagRows : rows
     const idx = list.findIndex((x) => x.id === id)
@@ -369,7 +383,9 @@ export const accountAuthHandlers = [
         return HttpResponse.json({ error: errors.map(formatManualValidationMessage).join(' / ') }, { status: 400 })
       }
     }
-    list[idx] = { ...list[idx], ...input, password, id, upd_date: now() }
+    // authority省略時（undefined）は権限に一切触れない（サーバー側と同じ規約）
+    const authority = body.authority !== undefined ? body.authority : current.authority
+    list[idx] = { ...list[idx], ...input, password, id, upd_date: now(), authority }
     return HttpResponse.json(list[idx])
   }),
 

@@ -50,7 +50,9 @@ type SharedFields = {
   store_name: string | null;
 };
 
-// 読み取り型（レスポンス＝全カラム常に存在。? は使わず null可は `| null`）
+// 読み取り型（レスポンス＝全カラム常に存在。? は使わず null可は `| null`）。
+// authorityはDBの列ではなく別テーブル(t_user_authority_manage)から導出した値
+// （権限は通常アカウントにだけ付くため、target='diag'の時は常にnull）
 export type AccountAuth = SharedFields & {
   id: number;
   accountName: string;
@@ -59,6 +61,7 @@ export type AccountAuth = SharedFields & {
   delfg: boolean;
   reg_date: string;
   upd_date: string;
+  authority: Authority | null;
 };
 
 // 書き込み型（サーバー管理 id/reg_date/upd_date を除く。読み取りと対称。delfgはユーザーが手動編集するため含む）
@@ -82,7 +85,9 @@ type PhpRow = SharedFields & {
   upd_date: string;
 };
 
-function toApi(row: PhpRow): AccountAuth {
+// authorityはこの行単体からは分からない（別テーブル由来）ため、呼び出し側
+// （listAllAccountAuth）が権限マップを引いた上で渡す。diag向けは常にnull
+function toApi(row: PhpRow, authority: Authority | null): AccountAuth {
   return {
     id: Number(row.id),
     accountName: row.username,
@@ -101,6 +106,7 @@ function toApi(row: PhpRow): AccountAuth {
     reg_date: row.reg_date,
     upd_date: row.upd_date,
     delfg: String(row.delfg) === "1",
+    authority,
   };
 }
 
@@ -117,6 +123,11 @@ type PhpInfo = Partial<
 > & {
   updatemark: "INSERT" | "UPDATE"; // 物理DELETEはサポートしない（論理削除はUPDATE+delfg:trueで表現）
   id?: number;
+  // 権限（なし/ALL_MANUAL/HTML_BROWSING）。キー自体を省略すれば権限には一切触れない
+  // （TInetUserAuthBase.update側がproperty_existsで判定するため、undefinedの明示的な
+  // 代入ではなくキー自体の有無で区別する。呼び出し側はauthorityが指定された時だけ
+  // このキーを足すこと）
+  authority?: Authority | null;
 };
 
 function toPhpInfo(
@@ -144,7 +155,9 @@ function toPhpInfo(
   };
 }
 
-// 論理削除(delfg=1)も含めた全件（削除済み行は「状態」列で区別して表示する）
+// 論理削除(delfg=1)も含めた全件（削除済み行は「状態」列で区別して表示する）。
+// 権限は通常アカウントにだけ付くため、target='normal'の時だけ権限マップを
+// 引いてマージする（diagは常にauthority: null）
 export async function listAllAccountAuth(
   target: AccountAuthTarget = "normal",
 ): Promise<AccountAuth[]> {
@@ -153,7 +166,9 @@ export async function listAllAccountAuth(
     "load",
     [],
   );
-  return rows.map(toApi);
+  const authorityById =
+    target === "normal" ? await listManagedAuthorities() : new Map<number, Authority | null>();
+  return rows.map((row) => toApi(row, authorityById.get(Number(row.id)) ?? null));
 }
 
 // listAllAccountAuth()はAMFPHP側の不調で「通信自体は成功したが中身が不完全」な結果を
@@ -170,13 +185,20 @@ export function assertAccountAuthListLooksValid(list: AccountAuth[]): void {
   }
 }
 
+// authorities指定時（手動の新規追加で権限欄も設定した場合）は、recordsと同じ
+// 並び・同じ長さの配列を渡す。省略時は今まで通り権限に一切触れない。
+// 権限を書くにはDbManagerTInetUserAuth.update側のauthority同期（2026-11-12追加）に
+// 任せるだけでよく、この関数自体は変更不要（toPhpInfoの結果にauthorityキーが
+// 乗るだけ）
 export async function createAccountAuth(
   records: AccountAuthInput[],
   target: AccountAuthTarget = "normal",
+  authorities?: (Authority | null)[],
 ): Promise<{ inserted: number }> {
-  const data = records.map((r) =>
-    toPhpInfo({ ...r, password: hashPassword(r.password) }, "INSERT"),
-  );
+  const data = records.map((r, i) => ({
+    ...toPhpInfo({ ...r, password: hashPassword(r.password) }, "INSERT"),
+    authority: authorities?.[i],
+  }));
   await callAmfphpService(PHP_SERVICE[target], "update", [data]);
   return { inserted: records.length };
 }
@@ -185,6 +207,7 @@ export async function updateAccountAuth(
   id: number,
   input: AccountAuthInput,
   target: AccountAuthTarget = "normal",
+  authority?: Authority | null,
 ): Promise<AccountAuth | null> {
   // 部分更新なので事前に現在行を読む必要はない（idが存在しなければ単に
   // 0件更新で終わり、下のlistAllAccountAuth().find()がnullを返す）
@@ -194,6 +217,10 @@ export async function updateAccountAuth(
   // 非空＝新しい平文が入力された→ハッシュ化して送る（既存ハッシュを再ハッシュしない）
   if (input.password.trim() === "") delete info.password;
   else info.password = hashPassword(input.password);
+  // authorityがundefined（編集フォームで権限欄を触っていない）ならキー自体を
+  // 持たせない。JSON.stringifyはundefined値のキーを自動で落とすので、
+  // ここで明示的にdeleteしなくても意図通りPHP側に渡らない
+  info.authority = authority;
 
   const data = [info];
   await callAmfphpService(PHP_SERVICE[target], "update", [data]);
@@ -269,7 +296,7 @@ export interface ApplyImportResult {
 export async function listManagedAuthorities(): Promise<Map<number, Authority | null>> {
   const rows = await callAmfphpService<
     { account_id: number | string; authority_type: string; applicate: number | string | null }[]
-  >("DbManagerAccountAuthImport", "loadAuthorities", []);
+  >("DbManagerAuthorityManage", "load", []);
   const map = new Map<number, Authority | null>();
   for (const r of rows) {
     const accountId = Number(r.account_id);

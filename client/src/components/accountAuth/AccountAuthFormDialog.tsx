@@ -12,9 +12,19 @@ import Alert from '@mui/material/Alert'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
 import Checkbox from '@mui/material/Checkbox'
+import MenuItem from '@mui/material/MenuItem'
 import { RhfTextField } from '../form/RhfTextField'
-import type { AccountAuth, AccountAuthInput } from '../../api/accountAuth'
+import type { AccountAuth, AccountAuthInput, Authority } from '../../api/accountAuth'
 import { toFieldErrors } from '../../api/error'
+
+// フォーム上は''を「なし」として扱う（Authority | nullをそのままSelectの値には
+// しづらいため）。送信時にnullへ変換する
+type AuthorityFormValue = '' | Authority
+const AUTHORITY_OPTIONS: { value: AuthorityFormValue; label: string }[] = [
+  { value: '', label: 'なし' },
+  { value: 'ALL_MANUAL', label: 'ALL_MANUAL（電子マニュアル全閲覧）' },
+  { value: 'HTML_BROWSING', label: 'HTML_BROWSING（HTML版のみ閲覧）' },
+]
 
 // passwordは「必須」をZodに持たせない。新規追加時は常に必須・編集時は
 // 「パスワードを変更する」チェックがONの時だけ必須、という状態依存のルール
@@ -34,13 +44,17 @@ const schema = z.object({
   store_cd: z.string(),
   store_name: z.string(),
   delfg: z.boolean(),
+  // 権限は通常アカウントにだけ付く（docs/アカウント認証_権限とDIAG用アカウント.md）。
+  // 次回Excel取り込みで、電子マニュアル/多機能版HTML列の内容に応じて上書きされる
+  // （Excelが正。ここでの変更は一時的なもの）
+  authority: z.enum(['', 'ALL_MANUAL', 'HTML_BROWSING']),
 })
 type FormValues = z.infer<typeof schema>
 
 const empty: FormValues = {
   accountName: '', password: '', comment: '', number: '', submission_date: '', regist_date: '',
   company_cd: '', company_name: '', company_store_cd: '', company_store_branch_num: '',
-  non_sync: false, store_cd: '', store_name: '', delfg: false,
+  non_sync: false, store_cd: '', store_name: '', delfg: false, authority: '',
 }
 
 type Props = {
@@ -51,8 +65,10 @@ type Props = {
    *  下書きで自動採番ではない。ユーザーは自由に上書きできる */
   suggestedNumber?: number
   onClose: () => void
-  /** 送信。失敗時は ApiError を throw する想定（フィールドエラー紐付けのため await する） */
-  onSubmit: (input: AccountAuthInput) => Promise<void>
+  /** 送信。失敗時は ApiError を throw する想定（フィールドエラー紐付けのため await する）。
+   *  authorityは毎回明示的に渡す（フォームの選択欄は常に定まった値を持つため、
+   *  「触っていない」という概念が無い。呼び出し側はこの値をそのままAPIに渡せばよい） */
+  onSubmit: (input: AccountAuthInput, authority: Authority | null) => Promise<void>
   /** 送信成功時（ダイアログを閉じる等は呼び出し側） */
   onSuccess: () => void
   submitting?: boolean
@@ -108,6 +124,7 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
             store_cd: target.store_cd ?? '',
             store_name: target.store_name ?? '',
             delfg: target.delfg,
+            authority: target.authority ?? '',
           }
         : { ...empty, number: suggestedNumber != null ? String(suggestedNumber) : '' }
     )
@@ -126,24 +143,27 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
       return
     }
     try {
-      await onSubmit({
-        accountName: v.accountName,
-        // 編集で「パスワードを変更する」がOFFなら空文字を送る
-        // （サーバー側は空文字を「既存ハッシュを維持」の合図として扱う）
-        password: passwordRequired ? v.password : '',
-        comment: orNull(v.comment),
-        number: v.number.trim() === '' ? null : Number(v.number),
-        submission_date: orNull(v.submission_date),
-        regist_date: orNull(v.regist_date),
-        company_cd: orNull(v.company_cd),
-        company_name: orNull(v.company_name),
-        company_store_cd: orNull(v.company_store_cd),
-        company_store_branch_num: orNull(v.company_store_branch_num),
-        non_sync: v.non_sync,
-        store_cd: orNull(v.store_cd),
-        store_name: orNull(v.store_name),
-        delfg: v.delfg,
-      })
+      await onSubmit(
+        {
+          accountName: v.accountName,
+          // 編集で「パスワードを変更する」がOFFなら空文字を送る
+          // （サーバー側は空文字を「既存ハッシュを維持」の合図として扱う）
+          password: passwordRequired ? v.password : '',
+          comment: orNull(v.comment),
+          number: v.number.trim() === '' ? null : Number(v.number),
+          submission_date: orNull(v.submission_date),
+          regist_date: orNull(v.regist_date),
+          company_cd: orNull(v.company_cd),
+          company_name: orNull(v.company_name),
+          company_store_cd: orNull(v.company_store_cd),
+          company_store_branch_num: orNull(v.company_store_branch_num),
+          non_sync: v.non_sync,
+          store_cd: orNull(v.store_cd),
+          store_name: orNull(v.store_name),
+          delfg: v.delfg,
+        },
+        v.authority === '' ? null : v.authority,
+      )
       onSuccess()
     } catch (err) {
       // サーバーエラーを「項目下の赤字」へ。紐付かないものは上部Alertへ。
@@ -208,6 +228,13 @@ export function AccountAuthFormDialog({ open, target, suggestedNumber, onClose, 
             <Grid size={half}><RhfTextField name="company_store_branch_num" control={control} label="店舗CD枝番" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_cd" control={control} label="販売店CD" size="small" fullWidth /></Grid>
             <Grid size={half}><RhfTextField name="store_name" control={control} label="販売店名" size="small" fullWidth /></Grid>
+            <Grid size={half}>
+              <RhfTextField name="authority" control={control} select label="権限" size="small" fullWidth>
+                {AUTHORITY_OPTIONS.map((o) => (
+                  <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>
+                ))}
+              </RhfTextField>
+            </Grid>
             <Grid size={12}><RhfTextField name="comment" control={control} label="コメント" size="small" fullWidth multiline minRows={2} /></Grid>
             {/* スイッチ2つ（診断データ対象外・削除フラグ）は最下部にまとめる */}
             <Grid size={12}>

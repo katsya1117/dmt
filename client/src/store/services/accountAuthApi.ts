@@ -24,6 +24,7 @@ import {
   type AccountAuth,
   type AccountAuthInput,
   type AccountAuthTarget,
+  type Authority,
 } from '../../api/accountAuth'
 import { applyImport, type ApplyImportResult } from '../../api/accountAuthImport'
 import {
@@ -59,11 +60,14 @@ export const accountAuthApi = createApi({
       providesTags: ['AccountAuth'],
     }),
 
-    // 手入力1件もExcel取り込み複数件も同じ口
-    createAccountAuth: builder.mutation<{ inserted: number }, AccountAuthInput[]>({
-      queryFn: async (records) => {
+    // 手入力1件もExcel取り込み複数件も同じ口。authorities省略時は権限に触れない
+    createAccountAuth: builder.mutation<
+      { inserted: number },
+      { records: AccountAuthInput[]; authorities?: (Authority | null)[] }
+    >({
+      queryFn: async ({ records, authorities }) => {
         try {
-          return { data: await createAccountAuth(records) }
+          return { data: await createAccountAuth(records, authorities) }
         } catch (err) {
           return { error: err as ApiError }
         }
@@ -71,10 +75,14 @@ export const accountAuthApi = createApi({
       invalidatesTags: ['AccountAuth'],
     }),
 
-    updateAccountAuth: builder.mutation<AccountAuth, { id: number; input: AccountAuthInput; target?: AccountAuthTarget }>({
-      queryFn: async ({ id, input, target }) => {
+    // authority省略時（undefined）は権限に一切触れない
+    updateAccountAuth: builder.mutation<
+      AccountAuth,
+      { id: number; input: AccountAuthInput; target?: AccountAuthTarget; authority?: Authority | null }
+    >({
+      queryFn: async ({ id, input, target, authority }) => {
         try {
-          return { data: await updateAccountAuth(id, input, target ?? 'normal') }
+          return { data: await updateAccountAuth(id, input, target ?? 'normal', authority) }
         } catch (err) {
           return { error: err as ApiError }
         }

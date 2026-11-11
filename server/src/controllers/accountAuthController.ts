@@ -9,12 +9,22 @@ import {
   type AccountAuth,
   type AccountAuthInput,
   type AccountAuthTarget,
+  type Authority,
 } from '../repositories/accountAuth'
 import { validateImportRecords, formatManualValidationMessage } from '../services/accountAuthDiff'
 
-// 追加リクエストのボディ（手入力1件もExcel複数件も同じ口）
+// 追加リクエストのボディ（手入力1件もExcel複数件も同じ口）。
+// authorities指定時はrecordsと同じ並び・同じ長さの配列（省略時は権限に触れない）
 interface CreateAccountAuthBody {
   records: AccountAuthInput[]
+  authorities?: (Authority | null)[]
+}
+
+// 更新リクエストのボディ。authority省略時は権限に一切触れない
+// （三者択一の明示的な選択＝なし/ALL_MANUAL/HTML_BROWSINGと、「未指定」を区別するため）
+interface UpdateAccountAuthBody {
+  input: AccountAuthInput
+  authority?: Authority | null
 }
 
 interface ErrorResponse {
@@ -83,7 +93,7 @@ export class AccountAuthController extends Controller {
       return { error: errors.map(formatManualValidationMessage).join(' / ') }
     }
     try {
-      const result = await createAccountAuth(body.records)
+      const result = await createAccountAuth(body.records, target, body.authorities)
       this.setStatus(201)
       return result
     } catch (e: unknown) {
@@ -107,9 +117,10 @@ export class AccountAuthController extends Controller {
   @Response<ErrorResponse>(503, '既存データの取得に失敗（重複チェックが信用できないため中断）')
   public async update(
     @Path() id: number,
-    @Body() input: AccountAuthInput,
+    @Body() body: UpdateAccountAuthBody,
     @Query() target: AccountAuthTarget = 'normal',
   ): Promise<AccountAuth | ErrorResponse> {
+    const { input, authority } = body
     const all = await listAllAccountAuth(target)
     try {
       assertAccountAuthListLooksValid(all)
@@ -137,7 +148,7 @@ export class AccountAuthController extends Controller {
       }
     }
     try {
-      const updated = await updateAccountAuth(id, input, target)
+      const updated = await updateAccountAuth(id, input, target, authority)
       if (!updated) {
         this.setStatus(404)
         return { error: '対象が見つかりません' }

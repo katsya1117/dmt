@@ -9,10 +9,10 @@ const acct = (id: number, number: number, name: string, delfg = false): AccountA
   id, accountName: name, password: "hash", comment: null, number,
   submission_date: null, regist_date: null, company_cd: null, company_name: null,
   company_store_cd: null, company_store_branch_num: null, non_sync: false,
-  store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg,
+  store_cd: null, store_name: null, reg_date: ts, upd_date: ts, delfg, authority: null,
 });
 const rec = (number: number, name: string, delfg = false): AccountAuthInput => {
-  const { id: _id, reg_date: _r, upd_date: _u, ...rest } = acct(0, number, name, delfg);
+  const { id: _id, reg_date: _r, upd_date: _u, authority: _a, ...rest } = acct(0, number, name, delfg);
   return rest;
 };
 const marks = (manual: Mark, html: Mark, diag: Mark) => ({ manual, html, diag });

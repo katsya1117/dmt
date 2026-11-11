@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../amfphp/Services/AuthSession.php';
 require_once __DIR__ . '/TInetUserAuthWriter.php';
+require_once __DIR__ . '/AuthorityManageWriter.php';
 
 // docs/legacy-amfphp/webService/DbManagerTInetUserAuth.php のJSON契約
 // （load/updateの引数・戻り値の形）と、DBアクセスの仕方（DBConnectionクラス経由で
@@ -79,8 +80,15 @@ abstract class TInetUserAuthBase
 
     // 追加/更新（論理削除も'UPDATE'+delfg:trueで表現する。物理DELETEは
     // 意図的にサポートしない）。(userid, key, target, data)を直接引数として
-    // 受け取る。dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値} という
-    // 連想配列の配列で、1回の呼び出しで複数件（追加・更新・論理削除が混在）を処理できる
+    // 受け取る。dataは1件ずつ {updatemark: "INSERT"|"UPDATE", ...列の値, authority?}
+    // という連想配列の配列で、1回の呼び出しで複数件（追加・更新・論理削除が混在）を
+    // 処理できる。
+    // 【authorityは任意】$infoに`authority`プロパティ（'ALL_MANUAL'|'HTML_BROWSING'|null）
+    // があれば、その行の書き込み直後にAuthorityManageWriterで権限も同期する
+    // （2026-11-12）。これは手動の個別編集・個別追加（AccountAuthFormDialogで権限欄を
+    // 変更した時）専用で、Excel取り込み適用はDbManagerAccountAuthImportという別の
+    // 合成サービス経由のまま（件数・エラー処理の考え方が異なるため、あえて共有しない。
+    // 詳細はdocs/アカウント認証_権限とDIAG用アカウント.md参照）
     public function update($userid = null, $key = null, $target = 0, $data = null)
     {
         $auth = new AuthSession();
@@ -103,6 +111,20 @@ abstract class TInetUserAuthBase
         // アクセスする（本番側の方式に統一。2026-10-09）
         if (is_array($data)) {
             $now = date('Y-m-d H:i:s'); // このバッチ内の全レコードで同じ日時にする
+
+            // 権限マスタのid。権限を同期する行が1件でもある時だけ引く
+            $authorityIds = null;
+            foreach ($data as $info) {
+                if (property_exists($info, 'authority')) {
+                    $authorityIds = AuthorityManageWriter::loadAuthorityIds($db);
+                    if ($authorityIds === null) {
+                        $db->close();
+                        return array('code' => RESULT_FAILURE, 'errormsg' => '権限マスタ(t_authority_manage)にALL_MANUAL/HTML_BROWSINGが見つかりません');
+                    }
+                    break;
+                }
+            }
+
             foreach ($data as $info) {
                 $written = TInetUserAuthWriter::write($db, $table, $info, $now);
                 if ($written['skipped']) continue;
@@ -115,6 +137,15 @@ abstract class TInetUserAuthBase
                     $result = RESULT_FAILURE;
                     $errormsg = $db->errMsg;
                     break;
+                }
+
+                if (property_exists($info, 'authority')) {
+                    $authErr = AuthorityManageWriter::sync($db, $written['id'], $info->authority, $authorityIds, $now);
+                    if ($authErr !== null) {
+                        $result = RESULT_FAILURE;
+                        $errormsg = $authErr;
+                        break;
+                    }
                 }
             }
         }

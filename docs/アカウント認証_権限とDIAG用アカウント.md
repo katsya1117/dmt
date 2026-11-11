@@ -74,10 +74,52 @@ Excelに3列のどれかが無い場合は、取り込み自体を 400 で拒否
 | 層 | 追加・変更 |
 |---|---|
 | Express | `GET/PUT /api/account-auth?target=normal|diag`（DIAG用への `POST` 追加は 400）。取り込みの preview/apply が権限・DIAG用を扱う |
-| PHP | `DbManagerTInetUserAuth` / `DbManagerTInetUserAuthDiag`（load/update。実装は `lib/TInetUserAuthBase.php` 共通）、`DbManagerAccountAuthImport`（`loadAuthorities`／`apply`：通常・DIAG用・権限をまたぐ専用メソッド） |
+| PHP | `DbManagerTInetUserAuth` / `DbManagerTInetUserAuthDiag`（load/update。実装は `lib/TInetUserAuthBase.php` 共通）、`DbManagerAuthorityManage`（load/update。権限専用の正規サービス）、`DbManagerAccountAuthImport`（`apply`：Excel取り込み適用**専用**。通常・DIAG用・権限をまたぐ） |
 
 `apply` は通常アカウントを INSERT した直後の `lastInsertId` で権限を書く。`account_type` は通常/DIAGを区別する列ではない
 （ユーザー確認）ため、旧PHPが電子マニュアルアカウントの権限行に使っていた `0` を固定で使う。
+
+## 手動編集からの権限変更（2026-11-12追加）
+
+DIAG手動画面を無効化した代わり、**既存のアカウント認証編集フォームから直接権限を変更できる**ようにした
+（権限専用の管理画面は作らない方針。経緯は本ドキュメント末尾の設計メモ、および
+memory: project-diag-and-authority-rules参照）。手動変更はあくまで一時的なもので、次回のExcel取り込みで
+電子マニュアル/多機能版HTML列の内容に応じて上書きされ直す（Excelが正）。
+
+- `AccountAuthFormDialog`に三者択一の「権限」セレクタを追加。編集時は現在値（`AccountAuth.authority`）で
+  プリフィル、新規追加時も選択可能
+- `PUT /api/account-auth/{id}` のボディを `AccountAuthInput` 単体から `{ input, authority? }` に変更。
+  `POST /api/account-auth` には `authorities?: (Authority|null)[]`（`records`と同じ並び）を追加。
+  どちらも**省略時（undefined）は権限に一切触れない**（JSON上キー自体が無ければPHP側のproperty_existsで判定）
+- `GET /api/account-auth?target=normal` のレスポンスに `authority` を追加（`target=diag`は常に`null`。
+  権限は通常アカウントにだけ付くため）
+
+### PHP側の設計判断：なぜ専用サービスを分けたか
+
+当初「権限を書くには`DbManagerAccountAuthImport`を手動編集からも呼べばいい」と考えたが、**それは誤りだった**。
+`DbManagerAccountAuthImport`は名前・設計ともにExcel取り込み専用（複数件のバッチ適用、ベストエフォートで
+途中失敗は次回の再取り込みで補う前提）であり、手動の単発編集（1件だけ、その場で正確な成否を返したい）とは
+呼び出し方・エラー処理の考え方が異なる。別の操作を同じサービスに無理に押し込むのではなく、以下のように
+**実際のSQL処理を行うモジュールだけを共有**する構成にした。
+
+```
+TInetUserAuthWriter（モジュール。ログイン確認・DB接続を持たない）
+  ├─ DbManagerTInetUserAuth / DbManagerTInetUserAuthDiag（通常/DIAG）
+  └─ DbManagerAccountAuthImport（Excel取り込み適用から直接呼ぶ）
+
+AuthorityManageWriter（モジュール。同上。lib/AuthorityManageWriter.php、
+  旧DbManagerAccountAuthImportのprivateメソッドから切り出し）
+  ├─ DbManagerAuthorityManage（正規サービス。現状これを直接呼ぶ呼び出し元は無いが、
+  │   他テーブルと同じ粒度で存在させる一貫性のため）
+  └─ DbManagerAccountAuthImport（Excel取り込み適用から直接呼ぶ）
+```
+
+権限を扱う手動編集・新規追加は、`DbManagerAccountAuthImport`を経由せず、
+**`DbManagerTInetUserAuth.update`（`TInetUserAuthBase::update`）自体を拡張**し、
+`$info`に`authority`プロパティがあればその場で`AuthorityManageWriter`も呼ぶようにした
+（Excelの`changed`行が`authority`を同じオブジェクトに乗せているのと同じ形）。「権限を触らない編集」と
+「権限も触る編集」は呼び出し元・件数・レスポンスの形が完全に同じ（同じ編集フォーム、常に1件）なので、
+サービスを分けずオプションの属性として扱うのが適切と判断した。
 
 ## 既知の制約
 
@@ -85,4 +127,9 @@ Excelに3列のどれかが無い場合は、取り込み自体を 400 で拒否
   読み直して差分を再計算するため、同じファイルをもう一度取り込めば残りが補われる（冪等）。
 - MSWモック（Storybook）はこの判定を再現せず、`entitlementChanges`／`rowErrors` を常に空で返す。見た目は
   `ImportDiffDialog.stories` が差分を直接渡して確認する。
-- PHPはローカルに `php` が無い環境では実行・構文チェックができていない（`yarn dev` での確認が必要）。
+- 2026-11-12、docker-composeでphp-serverを再ビルドし、ローカルで`DbManagerAuthorityManage`・
+  `DbManagerTInetUserAuth`のauthority拡張・`DbManagerAccountAuthImport`の切り出し後の動作をgateway.php
+  経由で実地検証済み（それまでは`php`がローカルに無く未検証だった）。`t_authority_manage`/
+  `t_user_authority_manage`テーブルは、既存のSQLiteファイルが先に作られていたため自動生成されておらず、
+  手動でCREATE TABLE＋シードを当てて補った（新規にコンテナを作り直す場合は`DBConnection.php`の初回起動処理で
+  自動生成されるため不要）。

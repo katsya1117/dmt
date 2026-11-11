@@ -240,7 +240,10 @@ export interface components {
             line: number;
             record: components["schemas"]["AccountAuthInput"];
         };
+        /** @enum {string} */
+        Authority: "ALL_MANUAL" | "HTML_BROWSING";
         AccountAuth: components["schemas"]["SharedFields"] & {
+            authority: components["schemas"]["Authority"] | null;
             upd_date: string;
             reg_date: string;
             delfg: boolean;
@@ -272,8 +275,6 @@ export interface components {
             before: components["schemas"]["AccountAuth"];
             after: components["schemas"]["AccountAuthInput"];
         };
-        /** @enum {string} */
-        Authority: "ALL_MANUAL" | "HTML_BROWSING";
         /** @enum {string} */
         DiagState: "alive" | "deleted" | "none";
         EntitlementChange: {
@@ -338,6 +339,11 @@ export interface components {
         AccountAuthTarget: "normal" | "diag";
         CreateAccountAuthBody: {
             records: components["schemas"]["AccountAuthInput"][];
+            authorities?: (components["schemas"]["Authority"] | null)[];
+        };
+        UpdateAccountAuthBody: {
+            input: components["schemas"]["AccountAuthInput"];
+            authority?: components["schemas"]["Authority"] | null;
         };
     };
     responses: never;
@@ -721,7 +727,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AccountAuthInput"];
+                "application/json": components["schemas"]["UpdateAccountAuthBody"];
             };
         };
         responses: {
