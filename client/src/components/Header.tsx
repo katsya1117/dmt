@@ -34,8 +34,6 @@ const NAV: NavCategory[] = [
       { label: '車種テーブル', to: '/master/vehicle' },
       { label: 'お知らせ情報テーブル', to: '/master/notice' },
       { label: 'アカウント認証テーブル', to: '/master/account-auth' },
-      { label: '権限テーブル', to: '/master/role' },
-      { label: 'ユーザー権限テーブル', to: '/master/user-role' },
       { label: '運用管理者テーブル', to: '/master/admin' },
       { label: 'アプリケーション更新テーブル', to: '/master/app-update' },
       { label: '生産情報テーブル', to: '/master/production-info' },

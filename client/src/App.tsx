@@ -22,8 +22,6 @@ import LogViewer from './pages/LogViewer'
 import VehicleTable from './pages/VehicleTable'
 import NoticeTable from './pages/NoticeTable'
 import AccountAuthTable from './pages/AccountAuthTable'
-import RoleTable from './pages/RoleTable'
-import UserRoleTable from './pages/UserRoleTable'
 import AdminTable from './pages/AdminTable'
 import AppUpdateTable from './pages/AppUpdateTable'
 import ProductionInfoTable from './pages/ProductionInfoTable'
@@ -73,8 +71,6 @@ export default function App() {
             <Route path="/master/vehicle" element={<VehicleTable />} />
             <Route path="/master/notice" element={<NoticeTable />} />
             <Route path="/master/account-auth" element={<AccountAuthTable />} />
-            <Route path="/master/role" element={<RoleTable />} />
-            <Route path="/master/user-role" element={<UserRoleTable />} />
             <Route path="/master/admin" element={<AdminTable />} />
             <Route path="/master/app-update" element={<AppUpdateTable />} />
             <Route path="/master/production-info" element={<ProductionInfoTable />} />
